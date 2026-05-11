@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
-import type { AppSettings, ChatMessage, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
-import { chatWithLab, getLabs, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
+import type { AppSettings, ChatMessage, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
+import { chatWithLab, getLabChatStatus, getLabs, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -19,7 +19,9 @@ export function useWorkbench() {
   const isLoading = ref(false)
   const chatLabId = ref('')
   const chatMessages = shallowRef<ChatMessage[]>([])
+  const chatStatus = ref<LabChatStatus | null>(null)
   const isChatLoading = ref(false)
+  const isChatStatusLoading = ref(false)
   const isInjectingFault = ref(false)
   const lastOpenedLabId = ref('')
   const error = ref('')
@@ -132,11 +134,30 @@ export function useWorkbench() {
   function openLabChat(labId: string) {
     chatLabId.value = labId
     chatMessages.value = []
+    chatStatus.value = null
+    void refreshLabChatStatus(labId)
   }
 
   function closeLabChat() {
     chatLabId.value = ''
     chatMessages.value = []
+    chatStatus.value = null
+  }
+
+  async function refreshLabChatStatus(labId = chatLabId.value) {
+    if (!labId || isChatStatusLoading.value)
+      return
+
+    isChatStatusLoading.value = true
+    try {
+      chatStatus.value = await getLabChatStatus(labId)
+    }
+    catch {
+      chatStatus.value = null
+    }
+    finally {
+      isChatStatusLoading.value = false
+    }
   }
 
   async function sendChatMessage(content: string) {
@@ -150,6 +171,7 @@ export function useWorkbench() {
     error.value = ''
     try {
       const result = await chatWithLab(chatLabId.value, nextMessages)
+      chatStatus.value = result.status
       chatMessages.value = [...nextMessages, { role: 'assistant', content: result.message }]
     }
     catch (caught) {
@@ -182,11 +204,13 @@ export function useWorkbench() {
     selectedLabId,
     chatLabId,
     chatMessages,
+    chatStatus,
     lastOpenedLabId,
     query,
     status,
     isLoading,
     isChatLoading,
+    isChatStatusLoading,
     isInjectingFault,
     error,
     filteredLabs,
@@ -198,6 +222,7 @@ export function useWorkbench() {
     saveLayout,
     openLabChat,
     closeLabChat,
+    refreshLabChatStatus,
     sendChatMessage,
     injectLabFault,
   }

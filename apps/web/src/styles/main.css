@@ -949,7 +949,7 @@ h1 {
   bottom: 24px;
   z-index: 20;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: min(420px, calc(100vw - 32px));
   height: auto;
   padding: 18px;
@@ -981,6 +981,74 @@ h1 {
   gap: 12px;
   align-items: center;
   padding-bottom: 14px;
+}
+
+.chat-status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  background: rgba(239, 235, 245, 0.82);
+  border-radius: 24px;
+  box-shadow: var(--shadow-pressed);
+}
+
+.chat-status-pill,
+.chat-status-refresh {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 7px;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 10px;
+  color: var(--clay-muted);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  box-shadow:
+    7px 7px 14px rgba(160, 150, 180, 0.14),
+    -5px -5px 12px rgba(255, 255, 255, 0.82);
+}
+
+.chat-status-pill.online {
+  color: var(--clay-green);
+}
+
+.chat-status-pill span,
+.chat-status-refresh span {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-status-pill strong {
+  grid-column: 2;
+  color: var(--clay-foreground);
+  font-family: "Nunito", "Microsoft YaHei UI", sans-serif;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.chat-status-refresh {
+  border: 0;
+  cursor: pointer;
+  transition: transform 180ms var(--ease-clay), opacity 180ms var(--ease-clay), box-shadow 180ms var(--ease-clay);
+}
+
+.chat-status-refresh:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.chat-status-refresh:active:not(:disabled) {
+  box-shadow: var(--shadow-pressed);
+  transform: scale(0.95);
+}
+
+.chat-status-refresh:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
 .chat-avatar,

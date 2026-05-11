@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import type { AppSettings, ChatMessage, LabProject } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, LabChatResult, LabChatStatus, LabProject } from '@ensp-assistant/shared'
 import { scanSerialConsoles, type SerialScanResult } from './serialScanner.js'
 
 function asChatMessages(value: unknown): ChatMessage[] {
@@ -61,6 +61,44 @@ function buildSerialContext(scan: SerialScanResult): string {
   }).join('\n\n')
 }
 
+function detectSysname(config: string) {
+  return /^sysname\s+(.+)$/im.exec(config)?.[1]?.trim() ?? ''
+}
+
+function buildLabChatStatus(lab: LabProject, scan: SerialScanResult): LabChatStatus {
+  const consoles = scan.consoles.map((console) => {
+    return {
+      port: console.port,
+      prompt: console.prompt,
+      sysname: detectSysname(console.config),
+      hasConfig: Boolean(console.config),
+      error: console.error,
+    }
+  })
+
+  return {
+    totalDevices: lab.deviceCount || lab.preview?.nodes.length || 0,
+    onlineDevices: consoles.filter(console => !console.error).length,
+    scannedPorts: scan.scannedPorts.length,
+    consoles,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function buildStatusSummary(status: LabChatStatus) {
+  const onlineNames = status.consoles
+    .map(console => console.sysname || console.prompt || `127.0.0.1:${console.port}`)
+    .filter(Boolean)
+    .join(', ') || '无'
+
+  return [
+    `总设备量：${status.totalDevices || '未知'}`,
+    `已连接串口设备：${status.onlineDevices}`,
+    `已扫描端口数：${status.scannedPorts}`,
+    `可识别设备：${onlineNames}`,
+  ].join('\n')
+}
+
 function buildSystemPrompt(lab: LabProject, configContext: string, serialContext: string): string {
   const devices = lab.preview?.nodes
     .map(node => `${node.name}(${node.type}, ${node.model})`)
@@ -70,11 +108,12 @@ function buildSystemPrompt(lab: LabProject, configContext: string, serialContext
     .join('\n') || '未识别'
 
   return [
-    '你是华为 eNSP 实验助手，负责解释拓扑、读取串口现场配置、辅助排错。',
-    '回答要简洁、工程化、可执行。优先基于“串口现场快照”回答，其次参考本地配置文件和拓扑摘要。',
+    '你是一个本地实验助手。用户可能问 eNSP/网络排错，也可能问完全无关的问题；如果无关，就按普通助手直接回答。',
+    '回答要简洁、工程化、可执行。涉及实验时优先基于“串口现场快照”回答，其次参考本地配置文件和拓扑摘要。',
+    '不要以“你好，我是……”开头。不要在正文开头复述实验名称、拓扑设备列表、串口检测结果或“当前检测结果”。这些状态已由界面单独展示。',
+    '只有当用户明确询问连接状态、设备是否启动、当前检测到什么设备时，才简短引用串口状态；否则直接回答用户问题。',
     '如果串口未连接或未读到配置，要明确告诉用户“当前没有检测到可用串口/配置”，不要假装已经看到设备配置。',
     '输出必须使用 Markdown：标题必须独占一行；命令、配置片段、设备输出必须放进 fenced code block，例如 ```text ... ```；步骤用有序列表或短标题。',
-    '当用户问“查看机器配置/有没有连接上/排错”时，先说明检测到哪些串口端口、对应提示符或设备名，再结合实验拓扑判断可能是哪台设备。',
     `实验名称：${lab.name}`,
     `协议推断：${lab.protocol}`,
     `拓扑文件：${lab.topologyFile ?? '无'}`,
@@ -103,14 +142,37 @@ async function resolveModel(baseUrl: string, settings: AppSettings): Promise<str
   }
 }
 
-export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<string> {
+function normalizeAssistantContent(content: string) {
+  return content
+    .replace(/^你好[，,！!。\s]*我是[^\n]{0,80}(?:助手|实验助手)[。\n\s]*/i, '')
+    .replace(/^当前已检测到串口现场快照[:：]?\s*/i, '')
+    .trim()
+}
+
+async function scanLabSerialStatus(lab: LabProject) {
+  const scan = await scanSerialConsoles(Math.max(6, Math.min(16, (lab.deviceCount || 6) + 4)))
+  return {
+    scan,
+    status: buildLabChatStatus(lab, scan),
+  }
+}
+
+export async function getLabChatStatus(lab: LabProject): Promise<LabChatStatus> {
+  return (await scanLabSerialStatus(lab)).status
+}
+
+export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<LabChatResult> {
   const baseUrl = settings.aiBaseUrl.replace(/\/+$/, '')
   const model = await resolveModel(baseUrl, settings)
-  const [configContext, serialScan] = await Promise.all([
+  const [configContext, serialSnapshot] = await Promise.all([
     readConfigContext(lab),
-    scanSerialConsoles(Math.max(6, Math.min(16, (lab.deviceCount || 6) + 4))),
+    scanLabSerialStatus(lab),
   ])
-  const serialContext = buildSerialContext(serialScan)
+  const serialContext = [
+    buildStatusSummary(serialSnapshot.status),
+    '',
+    buildSerialContext(serialSnapshot.scan),
+  ].join('\n')
   const messages = asChatMessages(rawMessages)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 60000)
@@ -149,5 +211,8 @@ export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMes
   if (!content)
     throw new Error('AI response did not include message content.')
 
-  return content
+  return {
+    message: normalizeAssistantContent(content),
+    status: serialSnapshot.status,
+  }
 }

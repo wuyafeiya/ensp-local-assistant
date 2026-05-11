@@ -7,7 +7,10 @@ import {
   LibraryBig,
   Maximize2,
   Minimize2,
+  Radio,
+  RefreshCw,
   SendHorizontal,
+  Server,
   UserRound,
   X,
 } from 'lucide-vue-next'
@@ -25,6 +28,15 @@ const isChatExpanded = ref(false)
 
 const activeChatLab = computed(() => {
   return workbench.labs.value.find(lab => lab.id === workbench.chatLabId.value) ?? null
+})
+
+const chatStatusTime = computed(() => {
+  if (!workbench.chatStatus.value?.updatedAt)
+    return '未检测'
+  return new Date(workbench.chatStatus.value.updatedAt).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 })
 
 const navigationItems = [
@@ -143,6 +155,29 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
         </button>
         <button class="chat-icon-button" type="button" title="关闭 AI 助手" @click="workbench.closeLabChat(); isChatExpanded = false">
           <X :size="18" />
+        </button>
+      </div>
+
+      <div class="chat-status-strip">
+        <div class="chat-status-pill">
+          <Server :size="15" />
+          <span>总设备</span>
+          <strong>{{ workbench.chatStatus.value?.totalDevices || activeChatLab?.deviceCount || '-' }}</strong>
+        </div>
+        <div class="chat-status-pill online">
+          <Radio :size="15" />
+          <span>已开机</span>
+          <strong>{{ workbench.chatStatus.value?.onlineDevices ?? '-' }}</strong>
+        </div>
+        <button
+          class="chat-status-refresh"
+          type="button"
+          :disabled="workbench.isChatStatusLoading.value"
+          :title="`刷新状态，当前 ${chatStatusTime}`"
+          @click="workbench.refreshLabChatStatus()"
+        >
+          <RefreshCw :size="15" />
+          <span>{{ workbench.isChatStatusLoading.value ? '检测中' : chatStatusTime }}</span>
         </button>
       </div>
 

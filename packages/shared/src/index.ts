@@ -47,6 +47,27 @@ export interface ChatMessage {
   content: string
 }
 
+export interface LabChatConsoleStatus {
+  port: number
+  prompt: string
+  sysname: string
+  hasConfig: boolean
+  error: string | null
+}
+
+export interface LabChatStatus {
+  totalDevices: number
+  onlineDevices: number
+  scannedPorts: number
+  consoles: LabChatConsoleStatus[]
+  updatedAt: string
+}
+
+export interface LabChatResult {
+  message: string
+  status: LabChatStatus
+}
+
 export interface OpenLabResult {
   opened: boolean
   message: string

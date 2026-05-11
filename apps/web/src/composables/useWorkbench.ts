@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef } from 'vue'
-import type { AppSettings, ChatMessage, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
 import { chatWithLab, getLabChatStatus, getLabs, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
@@ -52,7 +52,7 @@ export function useWorkbench() {
   const chatStatus = ref<LabChatStatus | null>(null)
   const isChatLoading = ref(false)
   const isChatStatusLoading = ref(false)
-  const isInjectingFault = ref(false)
+  const injectingFaultLabId = ref('')
   const lastOpenedLabId = ref('')
   const error = ref('')
 
@@ -214,19 +214,25 @@ export function useWorkbench() {
     }
   }
 
-  async function injectLabFault(labId: string) {
+  async function checkLabRuntimeStatus(labId: string) {
+    return await getLabChatStatus(labId)
+  }
+
+  async function injectLabFault(labId: string): Promise<FaultInjectionResult> {
     selectedLabId.value = labId
-    isInjectingFault.value = true
+    injectingFaultLabId.value = labId
     error.value = ''
     try {
       const result = await injectFault(labId)
       status.value = result.message
+      return result
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : '投放故障失败'
+      throw caught
     }
     finally {
-      isInjectingFault.value = false
+      injectingFaultLabId.value = ''
     }
   }
 
@@ -243,7 +249,7 @@ export function useWorkbench() {
     isLoading,
     isChatLoading,
     isChatStatusLoading,
-    isInjectingFault,
+    injectingFaultLabId,
     error,
     filteredLabs,
     loadInitialData,
@@ -256,6 +262,7 @@ export function useWorkbench() {
     closeLabChat,
     refreshLabChatStatus,
     sendChatMessage,
+    checkLabRuntimeStatus,
     injectLabFault,
   }
 }

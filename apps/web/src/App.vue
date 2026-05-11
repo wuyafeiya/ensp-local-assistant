@@ -16,18 +16,36 @@ import {
 } from 'lucide-vue-next'
 import type { TopologyLayoutNode } from '@ensp-assistant/shared'
 import ChatMessageContent from './components/ChatMessageContent.vue'
+import ProgressModal from './components/ProgressModal.vue'
 import TemplateCard from './components/TemplateCard.vue'
 import TopologyEditorPage from './components/TopologyEditorPage.vue'
 import { useWorkbench } from './composables/useWorkbench'
+
+type ProgressStepStatus = 'pending' | 'running' | 'done' | 'failed'
+
+interface ProgressStep {
+  id: string
+  label: string
+  detail: string
+  status: ProgressStepStatus
+}
 
 const workbench = useWorkbench()
 const chatInput = ref('')
 const activeView = ref<'templates' | 'editor'>('templates')
 const isSavingLayout = ref(false)
 const isChatExpanded = ref(false)
+const faultModalLabId = ref('')
+const faultModalResult = ref<'running' | 'success' | 'failed'>('running')
+const faultModalSubtitle = ref('投放故障')
+const faultSteps = ref<ProgressStep[]>([])
 
 const activeChatLab = computed(() => {
   return workbench.labs.value.find(lab => lab.id === workbench.chatLabId.value) ?? null
+})
+
+const activeFaultLab = computed(() => {
+  return workbench.labs.value.find(lab => lab.id === faultModalLabId.value) ?? null
 })
 
 const chatStatusTime = computed(() => {
@@ -75,6 +93,89 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
   await workbench.saveLayout(labId, nodes)
   isSavingLayout.value = false
 }
+
+function createFaultSteps(): ProgressStep[] {
+  return [
+    {
+      id: 'scan',
+      label: '检测设备开机状态',
+      detail: '正在扫描本机串口端口',
+      status: 'running',
+    },
+    {
+      id: 'prepare',
+      label: '准备随机故障',
+      detail: '等待设备检测完成',
+      status: 'pending',
+    },
+    {
+      id: 'inject',
+      label: '投放隐蔽故障',
+      detail: '等待故障策略生成',
+      status: 'pending',
+    },
+  ]
+}
+
+function updateFaultStep(id: string, status: ProgressStepStatus, detail: string) {
+  faultSteps.value = faultSteps.value.map(step => step.id === id ? { ...step, status, detail } : step)
+}
+
+function currentRunningFaultStep() {
+  return faultSteps.value.find(step => step.status === 'running')
+}
+
+function wait(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function beginFaultInjection(labId: string) {
+  if (workbench.injectingFaultLabId.value)
+    return
+
+  const lab = workbench.labs.value.find(item => item.id === labId)
+  faultModalLabId.value = labId
+  faultModalResult.value = 'running'
+  faultModalSubtitle.value = lab ? `正在处理 ${lab.name}` : '正在投放故障'
+  faultSteps.value = createFaultSteps()
+
+  try {
+    const runtime = await workbench.checkLabRuntimeStatus(labId)
+    if (runtime.onlineDevices <= 0) {
+      updateFaultStep('scan', 'failed', `已扫描 ${runtime.scannedPorts} 个端口，没有检测到已开机设备`)
+      updateFaultStep('prepare', 'pending', '设备未开机，已停止投放')
+      updateFaultStep('inject', 'pending', '未执行')
+      faultModalResult.value = 'failed'
+      faultModalSubtitle.value = '投放失败'
+      return
+    }
+
+    updateFaultStep('scan', 'done', `检测到 ${runtime.onlineDevices}/${runtime.totalDevices || '-'} 台设备已开机`)
+    updateFaultStep('prepare', 'running', '正在选择可投放故障的接口')
+    await wait(260)
+    updateFaultStep('prepare', 'done', '已确认存在在线设备，开始投放')
+    updateFaultStep('inject', 'running', '正在连接串口并写入故障')
+
+    const result = await workbench.injectLabFault(labId)
+    updateFaultStep('inject', 'done', result.message)
+    faultModalResult.value = 'success'
+    faultModalSubtitle.value = '投放完成'
+  }
+  catch (caught) {
+    const message = caught instanceof Error ? caught.message : '投放故障失败'
+    const running = currentRunningFaultStep()
+    if (running)
+      updateFaultStep(running.id, 'failed', message)
+    else
+      updateFaultStep('inject', 'failed', message)
+    faultModalResult.value = 'failed'
+    faultModalSubtitle.value = '投放失败'
+  }
+}
+
+function closeFaultModal() {
+  faultModalLabId.value = ''
+}
 </script>
 
 <template>
@@ -120,12 +221,12 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
           :key="lab.id"
           :lab="lab"
           :is-opened="workbench.lastOpenedLabId.value === lab.id"
-          :is-faulting="workbench.isInjectingFault.value"
+          :is-faulting="workbench.injectingFaultLabId.value === lab.id"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
           @edit-layout="openLayoutEditor"
           @open-chat="openChat"
-          @inject-fault="workbench.injectLabFault"
+          @inject-fault="beginFaultInjection"
         />
       </section>
 
@@ -139,6 +240,15 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
         @save="saveEditorLayout"
       />
     </main>
+
+    <ProgressModal
+      :open="Boolean(faultModalLabId)"
+      :title="activeFaultLab?.name ?? '随机故障投放'"
+      :subtitle="faultModalSubtitle"
+      :result="faultModalResult"
+      :steps="faultSteps"
+      @close="closeFaultModal"
+    />
 
     <aside v-if="workbench.chatLabId.value" class="ai-chat-panel" :class="{ expanded: isChatExpanded }" aria-label="实验 AI 助手">
       <div class="ai-chat-header">

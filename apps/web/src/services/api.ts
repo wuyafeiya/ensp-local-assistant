@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatResult, LabChatStatus, LabProject, OpenLabResult, RuntimeState, TopologyLayoutNode } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, CloseLabResult, FaultInjectionResult, LabChatResult, LabChatStatus, LabProject, OpenLabResult, RuntimeState, TopologyLayoutNode } from '@ensp-assistant/shared'
 
 interface ChatStreamHandlers {
   onModel?: (model: string) => void
@@ -49,6 +49,13 @@ export function clearRuntimeState() {
 
 export function openLab(labId: string) {
   return request<OpenLabResult>(`/api/labs/${labId}/open`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
+export function closeLab(labId: string) {
+  return request<CloseLabResult>(`/api/labs/${labId}/close`, {
     method: 'POST',
     body: JSON.stringify({}),
   })

@@ -7,6 +7,7 @@ defineProps<{
   lab: LabProject
   isOpened: boolean
   isFaulting: boolean
+  isClosing: boolean
 }>()
 
 const emit = defineEmits<{
@@ -76,9 +77,16 @@ const emit = defineEmits<{
         >
           <Bug :size="17" />
         </button>
-        <button v-if="isOpened" class="launch-button close-opened-button" type="button" title="关闭当前打开状态" @click="emit('closeLab', lab.id)">
+        <button
+          v-if="isOpened"
+          class="launch-button close-opened-button"
+          type="button"
+          :disabled="isClosing"
+          :title="isClosing ? '正在保存设备并关闭' : '保存设备并关闭 eNSP'"
+          @click="emit('closeLab', lab.id)"
+        >
           <PowerOff :size="16" />
-          <span>关闭</span>
+          <span>{{ isClosing ? '保存' : '关闭' }}</span>
         </button>
         <button v-else class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
           <Play :size="16" />

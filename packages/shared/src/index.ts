@@ -79,6 +79,13 @@ export interface OpenLabResult {
   message: string
 }
 
+export interface CloseLabResult {
+  closed: boolean
+  message: string
+  savedDeviceCount: number
+  failedDeviceCount: number
+}
+
 export interface FaultInjectionResult {
   injected: boolean
   message: string

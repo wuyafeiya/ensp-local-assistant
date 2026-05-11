@@ -246,6 +246,7 @@ function closeFaultModal() {
           :lab="lab"
           :is-opened="workbench.lastOpenedLabId.value === lab.id"
           :is-faulting="workbench.injectingFaultLabId.value === lab.id"
+          :is-closing="workbench.closingLabId.value === lab.id"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
           @edit-layout="openLayoutEditor"

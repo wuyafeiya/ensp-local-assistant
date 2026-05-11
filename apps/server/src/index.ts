@@ -4,9 +4,9 @@ import { chatWithLab, getLabChatStatus, streamChatWithLab } from './aiTopology.j
 import { injectRandomFault } from './faultInjector.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { saveLayout } from './layoutStore.js'
-import { openLocalPath, openTopology } from './opener.js'
+import { closeEnsp, openLocalPath, openTopology } from './opener.js'
 import { clearActiveOpenedLab, readRuntimeState, setActiveOpenedLab } from './runtimeState.js'
-import { scanSerialConsoles } from './serialScanner.js'
+import { executeConsoleCommands, scanSerialConsoles } from './serialScanner.js'
 import { readSettings, writeSettings } from './settings.js'
 
 const app = express()
@@ -71,6 +71,52 @@ app.get('/api/labs', async (_req, res, next) => {
   }
 })
 
+async function saveOnlineDevices(maxProbe: number) {
+  const scan = await scanSerialConsoles(maxProbe)
+  const consoles = scan.consoles.filter(console => !console.error)
+  const results = await Promise.allSettled(consoles.map(async (console) => {
+    await executeConsoleCommands(console.port, ['save'])
+    return console.port
+  }))
+
+  return {
+    scannedPorts: scan.scannedPorts.length,
+    onlineDeviceCount: consoles.length,
+    savedDeviceCount: results.filter(result => result.status === 'fulfilled').length,
+    failedDeviceCount: results.filter(result => result.status === 'rejected').length,
+  }
+}
+
+async function closeOpenedTopology(labId: string) {
+  const settings = await readSettings()
+  const lab = labIndex.get(labId)
+  const maxProbe = Math.max(6, Math.min(24, (lab?.deviceCount || 8) + 8))
+  const saveResult = await saveOnlineDevices(maxProbe)
+
+  if (saveResult.failedDeviceCount > 0) {
+    return {
+      closed: false,
+      savedDeviceCount: saveResult.savedDeviceCount,
+      failedDeviceCount: saveResult.failedDeviceCount,
+      message: `已保存 ${saveResult.savedDeviceCount}/${saveResult.onlineDeviceCount} 台在线设备，${saveResult.failedDeviceCount} 台保存失败。为避免丢配置，已停止关闭 eNSP。`,
+    }
+  }
+
+  const closeResult = await closeEnsp(settings.enspExecutable)
+  await clearActiveOpenedLab()
+
+  return {
+    closed: true,
+    savedDeviceCount: saveResult.savedDeviceCount,
+    failedDeviceCount: saveResult.failedDeviceCount,
+    message: [
+      `已保存 ${saveResult.savedDeviceCount}/${saveResult.onlineDeviceCount} 台在线设备。`,
+      saveResult.failedDeviceCount ? `${saveResult.failedDeviceCount} 台保存失败。` : '',
+      closeResult.message,
+    ].filter(Boolean).join(' '),
+  }
+}
+
 app.post('/api/labs/:id/open', async (req, res, next) => {
   try {
     const settings = await readSettings()
@@ -81,10 +127,36 @@ app.post('/api/labs/:id/open', async (req, res, next) => {
       return
     }
 
+    const runtimeState = await readRuntimeState()
+    if (runtimeState.activeOpenedLabId && runtimeState.activeOpenedLabId !== lab.id)
+      await closeOpenedTopology(runtimeState.activeOpenedLabId)
+
     const result = await openTopology(lab.topologyFile, settings.enspExecutable)
     if (result.opened)
       await setActiveOpenedLab(lab.id)
     res.json({ data: result })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/labs/:id/close', async (req, res, next) => {
+  try {
+    const lab = labIndex.get(req.params.id)
+
+    if (!lab) {
+      res.status(404).json({ error: 'Lab not found. Scan labs first.' })
+      return
+    }
+
+    const runtimeState = await readRuntimeState()
+    if (runtimeState.activeOpenedLabId && runtimeState.activeOpenedLabId !== lab.id) {
+      res.status(409).json({ error: '当前关闭目标不是平台记录的已打开拓扑。' })
+      return
+    }
+
+    res.json({ data: await closeOpenedTopology(lab.id) })
   }
   catch (error) {
     next(error)

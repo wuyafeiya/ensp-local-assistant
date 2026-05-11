@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
-import { clearRuntimeState, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, streamChatWithLab, updateSettings } from '../services/api'
+import { closeLab, clearRuntimeState, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, streamChatWithLab, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -100,6 +100,7 @@ export function useWorkbench() {
   const isChatPreparing = ref(false)
   const isChatStatusLoading = ref(false)
   const injectingFaultLabId = ref('')
+  const closingLabId = ref('')
   const lastOpenedLabId = ref('')
   const activeOpenedAt = ref('')
   const error = ref('')
@@ -180,18 +181,31 @@ export function useWorkbench() {
   }
 
   async function launchLab(labId: string) {
+    if (closingLabId.value)
+      return
+
     selectedLabId.value = labId
     error.value = ''
     try {
       const previousLabId = lastOpenedLabId.value
       const previousOpenedAt = activeOpenedAt.value
-      const result = await openLab(labId)
-      const runtimeState = await getRuntimeState()
       if (previousLabId && previousLabId !== labId) {
+        closingLabId.value = previousLabId
+        status.value = '正在保存并关闭上一个拓扑'
+        const closeResult = await closeLab(previousLabId)
+        if (!closeResult.closed)
+          throw new Error(closeResult.message)
         clearStoredChatMessages(previousLabId)
         if (chatLabId.value === previousLabId)
           closeLabChat()
+        status.value = closeResult.message
+        closingLabId.value = ''
+        lastOpenedLabId.value = ''
+        activeOpenedAt.value = ''
       }
+
+      const result = await openLab(labId)
+      const runtimeState = await getRuntimeState()
       if (previousLabId === labId && previousOpenedAt && previousOpenedAt !== runtimeState.activeOpenedAt) {
         clearStoredChatMessages(labId)
         if (chatLabId.value === labId)
@@ -203,6 +217,9 @@ export function useWorkbench() {
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : '打开 eNSP 失败'
+    }
+    finally {
+      closingLabId.value = ''
     }
   }
 
@@ -249,21 +266,33 @@ export function useWorkbench() {
   }
 
   async function closeOpenedLab(labId: string) {
+    if (closingLabId.value)
+      return
+
     if (lastOpenedLabId.value !== labId)
       return
 
     error.value = ''
+    closingLabId.value = labId
     try {
+      status.value = '正在保存设备并关闭拓扑'
+      const closeResult = await closeLab(labId)
+      if (!closeResult.closed) {
+        status.value = closeResult.message
+        return
+      }
       clearStoredChatMessages(labId)
-      await clearRuntimeState()
       lastOpenedLabId.value = ''
       activeOpenedAt.value = ''
-      status.value = '已关闭当前拓扑状态'
+      status.value = closeResult.message
       if (chatLabId.value === labId)
         closeLabChat()
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : '关闭拓扑状态失败'
+    }
+    finally {
+      closingLabId.value = ''
     }
   }
 
@@ -387,6 +416,7 @@ export function useWorkbench() {
     isChatPreparing,
     isChatStatusLoading,
     injectingFaultLabId,
+    closingLabId,
     error,
     filteredLabs,
     loadInitialData,

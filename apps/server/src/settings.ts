@@ -8,6 +8,8 @@ const defaults: AppSettings = {
   aiBaseUrl: process.env.ENSP_AI_BASE_URL ?? 'http://127.0.0.1:8080/v1',
   aiApiKey: process.env.ENSP_AI_API_KEY ?? 'pwd',
   aiModel: process.env.ENSP_AI_MODEL ?? 'gpt-4o-mini',
+  autoStartDevices: false,
+  autoStartCommand: process.env.ENSP_AUTO_START_COMMAND ?? '',
 }
 
 function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
@@ -17,6 +19,8 @@ function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     aiBaseUrl: settings.aiBaseUrl?.trim() || defaults.aiBaseUrl,
     aiApiKey: settings.aiApiKey?.trim() || defaults.aiApiKey,
     aiModel: settings.aiModel?.trim() || defaults.aiModel,
+    autoStartDevices: Boolean(settings.autoStartDevices),
+    autoStartCommand: settings.autoStartCommand?.trim() || defaults.autoStartCommand,
   }
 }
 

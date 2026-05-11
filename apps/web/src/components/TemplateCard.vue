@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ExternalLink, FileCheck2, FileTerminal, PencilLine, Play, Route, TriangleAlert } from 'lucide-vue-next'
+import { Bot, ExternalLink, FileCheck2, FileTerminal, PencilLine, Play, Power, Route, TriangleAlert } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
 defineProps<{
   lab: LabProject
+  isOpened: boolean
+  autoStartDevices: boolean
 }>()
 
 const emit = defineEmits<{
   launch: [labId: string]
   openConfigs: [labId: string]
   editLayout: [labId: string]
+  openChat: [labId: string]
 }>()
 
 function previewLabel(lab: LabProject) {
@@ -42,6 +45,9 @@ function previewLabel(lab: LabProject) {
       >
         <PencilLine :size="17" />
       </button>
+      <button class="preview-ai-button" type="button" title="打开 AI 对话" @click="emit('openChat', lab.id)">
+        <Bot :size="17" />
+      </button>
     </div>
 
     <div class="template-card-top">
@@ -55,6 +61,14 @@ function previewLabel(lab: LabProject) {
     </div>
 
     <div class="template-signals">
+      <span v-if="isOpened" class="opened-signal">
+        <Power :size="15" />
+        已打开
+      </span>
+      <span v-if="autoStartDevices" class="autostart-signal">
+        <Play :size="15" />
+        自动启动
+      </span>
       <span :class="{ muted: !lab.topologyFile }">
         <FileCheck2 :size="15" />
         {{ lab.topologyFile ? '.topo' : '缺少拓扑' }}

@@ -60,7 +60,12 @@ app.post('/api/labs/:id/open', async (req, res, next) => {
       return
     }
 
-    res.json({ data: await openTopology(lab.topologyFile, settings.enspExecutable) })
+    res.json({
+      data: await openTopology(lab.topologyFile, settings.enspExecutable, {
+        autoStartDevices: settings.autoStartDevices,
+        autoStartCommand: settings.autoStartCommand,
+      }),
+    })
   }
   catch (error) {
     next(error)

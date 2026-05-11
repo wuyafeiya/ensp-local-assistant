@@ -8,6 +8,8 @@ export interface AppSettings {
   aiBaseUrl: string
   aiApiKey: string
   aiModel: string
+  autoStartDevices: boolean
+  autoStartCommand: string
 }
 
 export interface TopologyPreviewNode {
@@ -45,6 +47,13 @@ export interface TopologyLayoutNode {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+}
+
+export interface OpenLabResult {
+  opened: boolean
+  autoStartAttempted: boolean
+  autoStartStarted: boolean
+  message: string
 }
 
 export interface LabProject {

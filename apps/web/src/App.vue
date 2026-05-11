@@ -6,7 +6,10 @@ import {
   Gauge,
   Layers3,
   LibraryBig,
+  Maximize2,
+  Minimize2,
   PlayCircle,
+  Power,
   RefreshCcw,
   Search,
   SendHorizontal,
@@ -24,6 +27,7 @@ const workbench = useWorkbench()
 const chatInput = ref('')
 const layoutEditorLabId = ref('')
 const isSavingLayout = ref(false)
+const isChatExpanded = ref(false)
 
 const activeChatLab = computed(() => {
   return workbench.labs.value.find(lab => lab.id === workbench.chatLabId.value) ?? null
@@ -54,6 +58,11 @@ async function sendChat() {
 
 function openLayoutEditor(labId: string) {
   layoutEditorLabId.value = labId
+}
+
+function openChat(labId: string) {
+  workbench.openLabChat(labId)
+  isChatExpanded.value = false
 }
 
 function closeLayoutEditor() {
@@ -119,6 +128,16 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
             <RefreshCcw :size="18" />
             <span>扫描模板</span>
           </button>
+          <button
+            class="tool-button auto-start-toggle"
+            :class="{ active: workbench.settings.value.autoStartDevices }"
+            type="button"
+            :title="workbench.settings.value.autoStartDevices ? '关闭打开时自动启动设备' : '打开时尝试自动启动设备'"
+            @click="workbench.toggleAutoStartDevices"
+          >
+            <Power :size="18" />
+            <span>{{ workbench.settings.value.autoStartDevices ? '自动启动开' : '自动启动关' }}</span>
+          </button>
 
           <label class="template-search">
             <Search :size="18" />
@@ -140,9 +159,12 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
           v-for="lab in workbench.filteredLabs.value"
           :key="lab.id"
           :lab="lab"
+          :is-opened="workbench.lastOpenedLabId.value === lab.id"
+          :auto-start-devices="workbench.settings.value.autoStartDevices"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
           @edit-layout="openLayoutEditor"
+          @open-chat="openChat"
         />
       </section>
     </main>
@@ -155,7 +177,7 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
       @save="saveEditorLayout"
     />
 
-    <aside v-if="workbench.chatLabId.value" class="ai-chat-panel" aria-label="实验 AI 助手">
+    <aside v-if="workbench.chatLabId.value" class="ai-chat-panel" :class="{ expanded: isChatExpanded }" aria-label="实验 AI 助手">
       <div class="ai-chat-header">
         <div class="chat-avatar">
           <Bot :size="22" />
@@ -164,7 +186,11 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
           <span>AI 排错助手</span>
           <strong>{{ activeChatLab?.name ?? '当前实验' }}</strong>
         </div>
-        <button class="chat-icon-button" type="button" title="关闭 AI 助手" @click="workbench.closeLabChat">
+        <button class="chat-icon-button" type="button" :title="isChatExpanded ? '缩小 AI 助手' : '展开 AI 助手'" @click="isChatExpanded = !isChatExpanded">
+          <Minimize2 v-if="isChatExpanded" :size="18" />
+          <Maximize2 v-else :size="18" />
+        </button>
+        <button class="chat-icon-button" type="button" title="关闭 AI 助手" @click="workbench.closeLabChat(); isChatExpanded = false">
           <X :size="18" />
         </button>
       </div>

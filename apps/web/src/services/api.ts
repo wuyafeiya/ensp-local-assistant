@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, LabProject, OpenLabResult, TopologyLayoutNode } from '@ensp-assistant/shared'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -32,7 +32,7 @@ export function getLabs() {
 }
 
 export function openLab(labId: string) {
-  return request<{ opened: boolean, message: string }>(`/api/labs/${labId}/open`, {
+  return request<OpenLabResult>(`/api/labs/${labId}/open`, {
     method: 'POST',
     body: JSON.stringify({}),
   })

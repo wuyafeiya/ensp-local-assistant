@@ -199,7 +199,7 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
           <div class="message-avatar">
             <Bot :size="16" />
           </div>
-          <ChatMessageContent content="正在扫描本机串口、读取配置并分析..." />
+          <ChatMessageContent content="正在扫描串口、执行可用诊断命令并分析..." />
         </div>
       </div>
 

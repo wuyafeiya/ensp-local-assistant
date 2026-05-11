@@ -152,7 +152,7 @@ async function probeConsole(port: number): Promise<SerialConsoleSnapshot> {
   })
 }
 
-export async function executeConsoleCommands(port: number, commands: string[], timeoutMs = 4200): Promise<SerialCommandResult> {
+export async function executeConsoleCommands(port: number, commands: string[], timeoutMs = 8000): Promise<SerialCommandResult> {
   return await new Promise((resolve, reject) => {
     const socket = net.createConnection({ host: '127.0.0.1', port })
     let output = ''
@@ -190,7 +190,7 @@ export async function executeConsoleCommands(port: number, commands: string[], t
           socket.write(`${command}\r\n`)
         }, 180 + index * 180)
       })
-      setTimeout(() => finish(null), Math.max(1200, 360 + commands.length * 220))
+      setTimeout(() => finish(null), Math.min(timeoutMs - 300, Math.max(2600, 900 + commands.length * 900)))
     })
     socket.once('timeout', () => finish(new Error('串口执行命令超时')))
     socket.once('error', error => finish(error))

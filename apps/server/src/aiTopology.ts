@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import type { AppSettings, ChatMessage, LabChatResult, LabChatStatus, LabProject } from '@ensp-assistant/shared'
-import { scanSerialConsoles, type SerialScanResult } from './serialScanner.js'
+import { executeConsoleCommands, scanSerialConsoles, type SerialConsoleSnapshot, type SerialScanResult } from './serialScanner.js'
+
+interface DiagnosticCommandPlan {
+  commands: string[]
+  targetNames: string[]
+  runOnAll: boolean
+}
 
 function asChatMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value))
@@ -112,6 +118,7 @@ function buildSystemPrompt(lab: LabProject, configContext: string, serialContext
     '回答要简洁、工程化、可执行。涉及实验时优先基于“串口现场快照”回答，其次参考本地配置文件和拓扑摘要。',
     '不要以“你好，我是……”开头。不要在正文开头复述实验名称、拓扑设备列表、串口检测结果或“当前检测结果”。这些状态已由界面单独展示。',
     '只有当用户明确询问连接状态、设备是否启动、当前检测到什么设备时，才简短引用串口状态；否则直接回答用户问题。',
+    '如果“现场命令执行结果”里有内容，说明系统已经通过本机 127.0.0.1 串口端口执行了用户请求的诊断命令；回答时优先解释这些输出，不要说你无法登录或无法执行。',
     '如果串口未连接或未读到配置，要明确告诉用户“当前没有检测到可用串口/配置”，不要假装已经看到设备配置。',
     '输出必须使用 Markdown：标题必须独占一行；命令、配置片段、设备输出必须放进 fenced code block，例如 ```text ... ```；步骤用有序列表或短标题。',
     `实验名称：${lab.name}`,
@@ -122,6 +129,123 @@ function buildSystemPrompt(lab: LabProject, configContext: string, serialContext
     `串口现场快照：\n${serialContext}`,
     `配置内容：\n${configContext}`,
   ].join('\n\n')
+}
+
+function latestUserText(messages: ChatMessage[]) {
+  return [...messages].reverse().find(message => message.role === 'user')?.content ?? ''
+}
+
+function normalizeCommand(command: string) {
+  return command
+    .replace(/\s+[\u4E00-\u9FFF].*$/u, '')
+    .replace(/^[`"'“”‘’\s]+|[`"'“”‘’\s]+$/g, '')
+    .replace(/[。；;，,]+$/g, '')
+    .trim()
+}
+
+function isSafeDiagnosticCommand(command: string) {
+  return /^(?:display|dis|ping|tracert|trace|screen-length|terminal)\b/i.test(command)
+    && !/[|&><]/.test(command)
+    && !/\b(?:system-view|interface|shutdown|undo|save|reset|reboot|delete|format|startup|rename|copy|move|mkdir|rmdir)\b/i.test(command)
+}
+
+function extractDiagnosticCommands(text: string) {
+  const candidates: string[] = []
+
+  for (const match of text.matchAll(/```(?:text|shell|cmd|huawei|vrp)?\n([\s\S]*?)```/gi)) {
+    candidates.push(...match[1].split('\n'))
+  }
+
+  const commandPattern = /\b(?:display|dis|ping|tracert|trace)\s+[^\n。；;，,]+/gi
+  for (const match of text.matchAll(commandPattern))
+    candidates.push(match[0])
+
+  if (/screen-length|terminal length/i.test(text)) {
+    const linePattern = /\b(?:screen-length|terminal)\s+[^\n。；;，,]+/gi
+    for (const match of text.matchAll(linePattern))
+      candidates.push(match[0])
+  }
+
+  return [...new Set(candidates
+    .map(normalizeCommand)
+    .filter(command => command.length > 0 && command.length <= 160)
+    .filter(isSafeDiagnosticCommand))]
+    .slice(0, 5)
+}
+
+function extractTargetNames(text: string, lab: LabProject, scan: SerialScanResult) {
+  const names = [
+    ...(lab.preview?.nodes.map(node => node.name) ?? []),
+    ...scan.consoles.flatMap(console => [console.prompt, detectSysname(console.config)]),
+  ]
+    .map(name => name.trim())
+    .filter(Boolean)
+
+  return [...new Set(names.filter(name => new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegExp(name)}([^A-Za-z0-9_-]|$)`, 'i').test(text)))]
+}
+
+function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function buildDiagnosticCommandPlan(text: string, lab: LabProject, scan: SerialScanResult): DiagnosticCommandPlan | null {
+  const commands = extractDiagnosticCommands(text)
+  if (!commands.length)
+    return null
+
+  return {
+    commands,
+    targetNames: extractTargetNames(text, lab, scan),
+    runOnAll: /所有|全部|每台|全网|all devices|every device/i.test(text),
+  }
+}
+
+function consoleMatchesTarget(console: SerialConsoleSnapshot, targetName: string) {
+  const names = [console.prompt, detectSysname(console.config)]
+    .map(name => name.trim().toLowerCase())
+    .filter(Boolean)
+  return names.includes(targetName.trim().toLowerCase())
+}
+
+function selectCommandConsoles(plan: DiagnosticCommandPlan, scan: SerialScanResult) {
+  const healthyConsoles = scan.consoles.filter(console => !console.error)
+  if (plan.runOnAll)
+    return healthyConsoles
+
+  if (plan.targetNames.length > 0)
+    return healthyConsoles.filter(console => plan.targetNames.some(name => consoleMatchesTarget(console, name)))
+
+  return healthyConsoles.length === 1 ? healthyConsoles : []
+}
+
+async function buildCommandExecutionContext(plan: DiagnosticCommandPlan | null, scan: SerialScanResult) {
+  if (!plan)
+    return ''
+
+  const consoles = selectCommandConsoles(plan, scan).slice(0, 8)
+  if (!consoles.length) {
+    return [
+      '用户请求了现场执行诊断命令，但没有找到明确可执行的目标设备。',
+      plan.targetNames.length ? `用户指定目标：${plan.targetNames.join(', ')}` : '用户未指定设备，且当前可连接设备不止一台。',
+      `已识别命令：${plan.commands.join(' ; ')}`,
+      '请让用户指定设备名，例如“在 R1 执行 display ip interface brief”。',
+    ].join('\n')
+  }
+
+  const results = await Promise.all(consoles.map(async (console) => {
+    const commands = ['screen-length 0 temporary', ...plan.commands]
+    const result = await executeConsoleCommands(console.port, commands)
+    const deviceName = detectSysname(console.config) || console.prompt || `127.0.0.1:${console.port}`
+    return [
+      `## ${deviceName} / 127.0.0.1:${console.port}`,
+      `执行命令：${plan.commands.join(' ; ')}`,
+      '```text',
+      result.output || '命令执行完成，但未读取到输出。',
+      '```',
+    ].join('\n')
+  }))
+
+  return results.join('\n\n')
 }
 
 async function resolveModel(baseUrl: string, settings: AppSettings): Promise<string> {
@@ -164,16 +288,19 @@ export async function getLabChatStatus(lab: LabProject): Promise<LabChatStatus> 
 export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<LabChatResult> {
   const baseUrl = settings.aiBaseUrl.replace(/\/+$/, '')
   const model = await resolveModel(baseUrl, settings)
+  const messages = asChatMessages(rawMessages)
   const [configContext, serialSnapshot] = await Promise.all([
     readConfigContext(lab),
     scanLabSerialStatus(lab),
   ])
+  const commandPlan = buildDiagnosticCommandPlan(latestUserText(messages), lab, serialSnapshot.scan)
+  const commandExecutionContext = await buildCommandExecutionContext(commandPlan, serialSnapshot.scan)
   const serialContext = [
     buildStatusSummary(serialSnapshot.status),
     '',
     buildSerialContext(serialSnapshot.scan),
+    commandExecutionContext ? `\n现场命令执行结果：\n${commandExecutionContext}` : '',
   ].join('\n')
-  const messages = asChatMessages(rawMessages)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 60000)
 

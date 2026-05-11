@@ -16,6 +16,7 @@ import {
 } from 'lucide-vue-next'
 import type { TopologyLayoutNode } from '@ensp-assistant/shared'
 import ChatMessageContent from './components/ChatMessageContent.vue'
+import ChatProgressMessage from './components/ChatProgressMessage.vue'
 import ProgressModal from './components/ProgressModal.vue'
 import TemplateCard from './components/TemplateCard.vue'
 import TopologyEditorPage from './components/TopologyEditorPage.vue'
@@ -326,7 +327,7 @@ function closeFaultModal() {
           <div class="message-avatar">
             <Bot :size="16" />
           </div>
-          <ChatMessageContent content="正在连接串口、执行命令并分析..." />
+          <ChatProgressMessage />
         </div>
       </div>
 

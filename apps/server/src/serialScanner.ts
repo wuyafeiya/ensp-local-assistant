@@ -67,6 +67,18 @@ function clip(text: string, max = 7000) {
   return text.length > max ? `${text.slice(0, max)}\n...输出已截断...` : text
 }
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function hasPager(output: string) {
+  return /[-\s]+More[-\s]+/i.test(output)
+}
+
+function hasRecentPager(output: string) {
+  return hasPager(output.slice(-800))
+}
+
 function detectPrompt(output: string) {
   const matches = [...output.matchAll(/[<[]([A-Za-z0-9_.-]{1,64})[>\]]/g)]
   return matches.at(-1)?.[1] ?? ''
@@ -135,33 +147,63 @@ async function probeConsole(port: number): Promise<SerialConsoleSnapshot> {
     socket.setEncoding('utf8')
     socket.setTimeout(3600)
     socket.on('data', (chunk) => {
-      output += chunk
+      const text = String(chunk)
+      output += text
+      if (hasPager(text))
+        socket.write('q')
       if (output.length > 22000)
         output = output.slice(-22000)
     })
-    socket.once('connect', () => {
-      socket.write('\r\n')
-      setTimeout(() => {
+    socket.once('connect', async () => {
+      try {
+        socket.write('\r\n')
+        await sleep(300)
+        if (hasRecentPager(output)) {
+          socket.write('q')
+          await sleep(240)
+        }
+        socket.write('\u0003')
+        await sleep(160)
+        socket.write('\r\n')
+        await sleep(180)
         socket.write('screen-length 0 temporary\r\n')
+        await sleep(260)
         socket.write('display current-configuration\r\n')
-      }, 250)
-      setTimeout(() => finish(null), 2600)
+        await sleep(2600)
+        finish(null)
+      }
+      catch {
+        finish('串口读取失败')
+      }
     })
     socket.once('timeout', () => finish('串口读取超时'))
     socket.once('error', error => finish(error.message))
   })
 }
 
-export async function executeConsoleCommands(port: number, commands: string[], timeoutMs = 8000): Promise<SerialCommandResult> {
+function expandInteractiveCommands(commands: string[]) {
+  const expanded: string[] = []
+  commands.forEach((command, index) => {
+    expanded.push(command)
+    if (/^save(?:\s|$)/i.test(command) && !/^(?:y|yes)$/i.test(commands[index + 1] ?? ''))
+      expanded.push('y')
+  })
+  return expanded
+}
+
+export async function executeConsoleCommands(port: number, commands: string[], timeoutMs = 25000): Promise<SerialCommandResult> {
   return await new Promise((resolve, reject) => {
     const socket = net.createConnection({ host: '127.0.0.1', port })
     let output = ''
     let settled = false
+    let timeoutHandle: NodeJS.Timeout | null = null
 
     const finish = (error: Error | null = null) => {
       if (settled)
         return
       settled = true
+      if (timeoutHandle)
+        clearTimeout(timeoutHandle)
       socket.removeAllListeners()
       socket.destroy()
 
@@ -179,18 +221,48 @@ export async function executeConsoleCommands(port: number, commands: string[], t
     socket.setEncoding('utf8')
     socket.setTimeout(timeoutMs)
     socket.on('data', (chunk) => {
-      output += chunk
+      const text = String(chunk)
+      output += text
+      if (hasPager(text))
+        socket.write('q')
       if (output.length > 24000)
         output = output.slice(-24000)
     })
-    socket.once('connect', () => {
-      socket.write('\r\n')
-      commands.forEach((command, index) => {
-        setTimeout(() => {
+    socket.once('connect', async () => {
+      timeoutHandle = setTimeout(() => finish(new Error('串口执行命令超时')), timeoutMs)
+
+      try {
+        socket.write('\r\n')
+        await sleep(320)
+        if (hasRecentPager(output)) {
+          socket.write('q')
+          await sleep(280)
+        }
+
+        socket.write('\u0003')
+        await sleep(180)
+        socket.write('\r\n')
+        await sleep(180)
+        socket.write('return\r\n')
+        await sleep(360)
+        socket.write('screen-length 0 temporary\r\n')
+        await sleep(420)
+
+        for (const command of expandInteractiveCommands(commands)) {
           socket.write(`${command}\r\n`)
-        }, 180 + index * 180)
-      })
-      setTimeout(() => finish(null), Math.min(timeoutMs - 300, Math.max(2600, 900 + commands.length * 900)))
+          await sleep(/^(?:y|yes)$/i.test(command) ? 900 : 640)
+          if (hasRecentPager(output)) {
+            socket.write('q')
+            await sleep(260)
+          }
+        }
+
+        await sleep(900)
+        finish(null)
+      }
+      catch (error) {
+        finish(error instanceof Error ? error : new Error('串口执行命令失败'))
+      }
     })
     socket.once('timeout', () => finish(new Error('串口执行命令超时')))
     socket.once('error', error => finish(error))

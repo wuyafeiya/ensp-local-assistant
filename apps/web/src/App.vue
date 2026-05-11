@@ -9,11 +9,8 @@ import {
   Maximize2,
   Minimize2,
   PlayCircle,
-  RefreshCcw,
-  Search,
   SendHorizontal,
   Settings2,
-  Sparkles,
   UserRound,
   X,
 } from 'lucide-vue-next'
@@ -121,24 +118,6 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
     </aside>
 
     <main class="template-workspace">
-      <section class="template-control-panel">
-        <div class="template-toolbar">
-          <button class="tool-button strong" type="button" title="重新扫描模板" @click="workbench.scanLabs">
-            <RefreshCcw :size="18" />
-            <span>扫描模板</span>
-          </button>
-
-          <label class="template-search">
-            <Search :size="18" />
-            <input v-model="workbench.query.value" type="search" placeholder="搜索实验名称、协议、路径">
-          </label>
-          <div class="template-count-pill">
-            <Sparkles :size="17" />
-            <span>{{ workbench.filteredLabs.value.length }} 个模板</span>
-          </div>
-        </div>
-      </section>
-
       <section v-if="workbench.error.value" class="template-error">
         {{ workbench.error.value }}
       </section>

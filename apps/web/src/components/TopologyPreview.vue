@@ -41,6 +41,18 @@ function gradientFor(type: TopologyDeviceType) {
   return `url(#${safeUid.value}-${key})`
 }
 
+function linkPath(link: NonNullable<typeof drawableLinks.value>[number]) {
+  const { source, target } = link
+  const dx = target.x - source.x
+  const dy = target.y - source.y
+
+  if (Math.abs(dx) < 8 || Math.abs(dy) < 8)
+    return `M ${source.x} ${source.y} L ${target.x} ${target.y}`
+
+  const curve = Math.min(110, Math.max(48, Math.abs(dx) * 0.42))
+  return `M ${source.x} ${source.y} C ${source.x + Math.sign(dx) * curve} ${source.y}, ${target.x - Math.sign(dx) * curve} ${target.y}, ${target.x} ${target.y}`
+}
+
 function pointFromEvent(event: PointerEvent) {
   const rect = svgRef.value?.getBoundingClientRect()
   if (!rect)
@@ -126,9 +138,7 @@ onBeforeUnmount(() => {
 
       <template v-if="preview && preview.parseStatus !== 'failed' && preview.nodes.length">
         <g v-for="link in drawableLinks" :key="link.id" class="preview-link" :class="{ serial: link.isSerial }">
-          <path
-            :d="`M ${link.source.x} ${link.source.y} C ${(link.source.x + link.target.x) / 2} ${link.source.y}, ${(link.source.x + link.target.x) / 2} ${link.target.y}, ${link.target.x} ${link.target.y}`"
-          />
+          <path :d="linkPath(link)" />
         </g>
 
         <g

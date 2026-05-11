@@ -82,7 +82,7 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
 </script>
 
 <template>
-  <div class="template-app">
+  <div class="template-app" :class="{ 'chat-open': workbench.chatLabId.value }">
     <div class="clay-blob blob-violet" />
     <div class="clay-blob blob-pink" />
     <div class="clay-blob blob-blue" />

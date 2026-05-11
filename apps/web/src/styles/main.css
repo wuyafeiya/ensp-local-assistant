@@ -104,6 +104,17 @@ strong,
     var(--clay-canvas);
 }
 
+.template-app.chat-open::after {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+  content: "";
+  background: rgba(244, 241, 250, 0.48);
+  backdrop-filter: blur(9px) saturate(0.92);
+  animation: modal-fade-in 180ms var(--ease-clay) both;
+}
+
 .clay-blob {
   position: fixed;
   z-index: -2;
@@ -824,13 +835,14 @@ h1 {
 
 .ai-chat-panel {
   position: fixed;
+  top: 24px;
   right: 24px;
   bottom: 24px;
   z-index: 20;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: min(380px, calc(100vw - 32px));
-  height: min(460px, calc(100vh - 48px));
+  width: min(420px, calc(100vw - 32px));
+  height: auto;
   padding: 18px;
   background: rgba(255, 255, 255, 0.76);
   border: 1px solid rgba(255, 255, 255, 0.78);
@@ -851,6 +863,7 @@ h1 {
   width: min(920px, calc(100vw - 48px));
   height: auto;
   transform: translateX(50%);
+  animation: chat-modal-in 320ms var(--ease-clay) both;
 }
 
 .ai-chat-header {
@@ -1111,11 +1124,22 @@ h1 {
 @keyframes chat-slide-in {
   from {
     opacity: 0;
-    transform: translateX(24px) scale(0.98);
+    transform: translateX(24px);
   }
   to {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0);
+  }
+}
+
+@keyframes chat-modal-in {
+  from {
+    opacity: 0;
+    transform: translate(50%, 18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(50%) scale(1);
   }
 }
 

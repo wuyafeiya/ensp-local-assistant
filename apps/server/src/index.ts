@@ -10,6 +10,7 @@ import { readSettings, writeSettings } from './settings.js'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
+let activeOpenedLabId = ''
 
 app.use(cors())
 app.use(express.json())
@@ -62,7 +63,10 @@ app.post('/api/labs/:id/open', async (req, res, next) => {
       return
     }
 
-    res.json({ data: await openTopology(lab.topologyFile, settings.enspExecutable) })
+    const result = await openTopology(lab.topologyFile, settings.enspExecutable)
+    if (result.opened)
+      activeOpenedLabId = lab.id
+    res.json({ data: result })
   }
   catch (error) {
     next(error)
@@ -147,6 +151,11 @@ app.post('/api/labs/:id/inject-fault', async (req, res, next) => {
 
     if (!lab) {
       res.status(404).json({ error: 'Lab not found. Scan labs first.' })
+      return
+    }
+
+    if (activeOpenedLabId !== lab.id) {
+      res.status(409).json({ error: '当前拓扑不是最近通过平台启动的拓扑。请先点击该拓扑的“启动”，再投放故障，避免误投到其它已打开拓扑。' })
       return
     }
 

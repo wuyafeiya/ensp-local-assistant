@@ -97,10 +97,16 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
 function createFaultSteps(): ProgressStep[] {
   return [
     {
+      id: 'verify',
+      label: '核对当前拓扑',
+      detail: '确认投放目标和最近启动拓扑一致',
+      status: 'running',
+    },
+    {
       id: 'scan',
       label: '检测设备开机状态',
       detail: '正在扫描本机串口端口',
-      status: 'running',
+      status: 'pending',
     },
     {
       id: 'prepare',
@@ -140,6 +146,18 @@ async function beginFaultInjection(labId: string) {
   faultSteps.value = createFaultSteps()
 
   try {
+    if (workbench.lastOpenedLabId.value !== labId) {
+      updateFaultStep('verify', 'failed', '当前拓扑不是最近通过平台启动的拓扑，请先点击该卡片“启动”')
+      updateFaultStep('scan', 'pending', '未检测设备开机状态')
+      updateFaultStep('prepare', 'pending', '已停止投放')
+      updateFaultStep('inject', 'pending', '未执行')
+      faultModalResult.value = 'failed'
+      faultModalSubtitle.value = '投放失败'
+      return
+    }
+
+    updateFaultStep('verify', 'done', '投放目标和最近启动拓扑一致')
+    updateFaultStep('scan', 'running', '正在扫描本机串口端口')
     const runtime = await workbench.checkLabRuntimeStatus(labId)
     if (runtime.onlineDevices <= 0) {
       updateFaultStep('scan', 'failed', `已扫描 ${runtime.scannedPorts} 个端口，没有检测到已开机设备`)

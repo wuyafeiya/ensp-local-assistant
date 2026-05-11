@@ -71,6 +71,25 @@ function buildCandidates(console: SerialConsoleSnapshot): FaultCandidate[] {
     }))
 }
 
+function labDeviceNames(lab: LabProject) {
+  return new Set((lab.preview?.nodes ?? [])
+    .map(node => node.name.trim().toLowerCase())
+    .filter(Boolean))
+}
+
+function consoleNames(console: SerialConsoleSnapshot) {
+  const sysname = /^sysname\s+(.+)$/im.exec(console.config)?.[1]?.trim() ?? ''
+  return [console.prompt, sysname]
+    .map(name => name.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function consoleMatchesLab(console: SerialConsoleSnapshot, expectedNames: Set<string>) {
+  if (expectedNames.size === 0)
+    return true
+  return consoleNames(console).some(name => expectedNames.has(name))
+}
+
 async function readFaultLog(): Promise<FaultLogEntry[]> {
   try {
     return JSON.parse(await readFile(faultLogFile, 'utf8')) as FaultLogEntry[]
@@ -94,7 +113,13 @@ export async function injectRandomFault(lab: LabProject): Promise<FaultInjection
     throw new Error('当前没有检测到已开机设备，不能投放故障。请先启动 eNSP 设备并确认串口可连接。')
   }
 
-  const candidates = scan.consoles.flatMap(buildCandidates)
+  const expectedNames = labDeviceNames(lab)
+  const matchedConsoles = onlineConsoles.filter(console => consoleMatchesLab(console, expectedNames))
+  if (matchedConsoles.length === 0) {
+    throw new Error('检测到有设备在线，但设备名和当前拓扑不匹配。为避免误投到其它拓扑，请确认当前拓扑已启动并完成 sysname 配置。')
+  }
+
+  const candidates = matchedConsoles.flatMap(buildCandidates)
 
   if (candidates.length === 0) {
     throw new Error('已检测到设备开机，但没有发现可投放故障的接口。请确认串口可以读取当前配置。')

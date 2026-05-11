@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { BookOpenText, ExternalLink, FileCheck2, FileTerminal, FolderTree, Play } from 'lucide-vue-next'
+import { BookOpenText, ExternalLink, FileCheck2, FileTerminal, Play, Route, TriangleAlert } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
+import TopologyPreview from './TopologyPreview.vue'
 
 defineProps<{
   lab: LabProject
@@ -9,20 +10,37 @@ defineProps<{
 const emit = defineEmits<{
   launch: [labId: string]
 }>()
+
+function previewLabel(lab: LabProject) {
+  if (!lab.preview)
+    return '未生成预览'
+  if (lab.preview.parseStatus === 'failed')
+    return '解析失败'
+  if (lab.preview.parseStatus === 'partial')
+    return '预览不完整'
+  return '拓扑预览'
+}
 </script>
 
 <template>
   <article class="template-card">
-    <div class="template-card-top">
-      <div class="template-icon">
-        <FolderTree :size="24" />
+    <div class="template-preview-wrap">
+      <TopologyPreview :preview="lab.preview" :title="lab.name" :uid="lab.id" />
+      <div class="preview-badge" :class="lab.preview?.parseStatus">
+        <TriangleAlert v-if="lab.preview?.parseStatus === 'failed' || lab.preview?.parseStatus === 'partial'" :size="14" />
+        <Route v-else :size="14" />
+        <span>{{ previewLabel(lab) }}</span>
       </div>
+    </div>
+
+    <div class="template-card-top">
       <span class="template-protocol">{{ lab.protocol }}</span>
+      <span class="template-count">{{ lab.deviceCount || '-' }} 设备 / {{ lab.linkCount || '-' }} 链路</span>
     </div>
 
     <div class="template-content">
       <h2>{{ lab.name }}</h2>
-      <p>{{ lab.path }}</p>
+      <p :title="lab.path">{{ lab.path }}</p>
     </div>
 
     <div class="template-signals">

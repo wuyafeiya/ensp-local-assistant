@@ -51,12 +51,6 @@ app.get('/api/labs', async (_req, res, next) => {
 app.post('/api/labs/:id/open', async (req, res, next) => {
   try {
     const settings = await readSettings()
-
-    if (req.params.id.startsWith('demo-')) {
-      res.json({ data: { opened: false, message: '演示模板不能启动；请先设置你的本地实验目录。' } })
-      return
-    }
-
     const lab = labIndex.get(req.params.id)
 
     if (!lab?.topologyFile) {

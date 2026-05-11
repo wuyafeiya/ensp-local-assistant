@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
 import type { LabProject } from '@ensp-assistant/shared'
-import { demoLabs } from './demo.js'
+import { buildTopologyPreview } from './topologyPreview.js'
 
 export const labIndex = new Map<string, LabProject>()
 
@@ -53,6 +53,7 @@ async function projectFromPath(path: string): Promise<LabProject> {
   const configCount = files.filter(file => ['.cfg', '.txt', '.vrpcfg'].includes(extname(file).toLowerCase())).length
   const name = basename(path).replace(/\.topo$/i, '')
   const protocol = inferProtocol(name)
+  const preview = topologyFile ? await buildTopologyPreview(topologyFile) : null
 
   return {
     id: idForPath(path),
@@ -64,10 +65,11 @@ async function projectFromPath(path: string): Promise<LabProject> {
     tags: [protocol, isDirectory ? 'Folder' : 'File'].filter(Boolean),
     difficulty: inferDifficulty(name),
     protocol,
-    deviceCount: 0,
-    linkCount: 0,
+    deviceCount: preview?.nodes.length ?? 0,
+    linkCount: preview?.links.length ?? 0,
     modifiedAt: info.mtime.toISOString(),
     status: topologyFile ? 'ready' : 'missing-topology',
+    preview,
   }
 }
 
@@ -75,7 +77,7 @@ export async function scanLabs(labRoot: string): Promise<LabProject[]> {
   labIndex.clear()
 
   if (!labRoot)
-    return demoLabs
+    return []
 
   try {
     const rootInfo = await stat(labRoot)
@@ -91,6 +93,6 @@ export async function scanLabs(labRoot: string): Promise<LabProject[]> {
     return labs.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
   }
   catch {
-    return demoLabs
+    return []
   }
 }

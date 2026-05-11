@@ -119,9 +119,11 @@ export function useWorkbench() {
       const updatedLab = await saveLabLayout(labId, nodes)
       labs.value = labs.value.map(lab => lab.id === labId ? updatedLab : lab)
       status.value = '布局已保存'
+      return true
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : '保存布局失败'
+      return false
     }
   }
 

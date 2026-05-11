@@ -419,27 +419,6 @@ h1 {
   height: 100%;
 }
 
-.preview-title {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 2;
-  max-width: calc(100% - 28px);
-  padding: 7px 12px;
-  overflow: hidden;
-  color: var(--clay-foreground);
-  font-family: "Nunito", "Microsoft YaHei UI", sans-serif;
-  font-size: 13px;
-  font-weight: 900;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.76);
-  border-radius: 999px;
-  box-shadow:
-    8px 8px 18px rgba(160, 150, 180, 0.18),
-    -6px -6px 16px rgba(255, 255, 255, 0.9);
-}
-
 .preview-blob {
   opacity: 0.28;
   filter: blur(18px);
@@ -542,6 +521,37 @@ h1 {
 
 .preview-badge.ai {
   background: linear-gradient(135deg, #f472b6, #7c3aed);
+}
+
+.preview-edit-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  border-radius: 18px;
+  box-shadow: var(--shadow-button);
+  cursor: pointer;
+  transition: transform 180ms var(--ease-clay), box-shadow 180ms var(--ease-clay), opacity 180ms var(--ease-clay);
+}
+
+.preview-edit-button:hover:not(:disabled) {
+  transform: translateY(-3px);
+}
+
+.preview-edit-button:active:not(:disabled) {
+  box-shadow: var(--shadow-pressed);
+  transform: scale(0.92);
+}
+
+.preview-edit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
 }
 
 .template-card-top,
@@ -692,6 +702,172 @@ h1 {
   font-weight: 800;
   background: rgba(255, 255, 255, 0.72);
   border-radius: 28px;
+}
+
+.topology-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(167, 139, 250, 0.26), transparent 28%),
+    radial-gradient(circle at 78% 82%, rgba(14, 165, 233, 0.2), transparent 30%),
+    rgba(244, 241, 250, 0.68);
+  backdrop-filter: blur(16px);
+  animation: modal-fade-in 220ms var(--ease-clay) both;
+}
+
+.topology-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(1040px, 100%);
+  max-height: min(860px, calc(100vh - 48px));
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 44px;
+  box-shadow:
+    30px 34px 70px rgba(124, 58, 237, 0.22),
+    -18px -18px 38px rgba(255, 255, 255, 0.88),
+    inset 8px 8px 18px rgba(139, 92, 246, 0.04),
+    inset -8px -8px 18px rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px);
+  animation: modal-pop-in 300ms var(--ease-clay) both;
+}
+
+.topology-modal-header,
+.topology-modal-footer {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topology-modal-header {
+  padding: 4px 4px 16px;
+}
+
+.topology-modal-header span,
+.topology-modal-header strong {
+  display: block;
+}
+
+.topology-modal-header span {
+  color: var(--clay-accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.topology-modal-header strong {
+  margin-top: 4px;
+  color: var(--clay-foreground);
+  font-family: "Nunito", "Microsoft YaHei UI", sans-serif;
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 900;
+  line-height: 1.08;
+}
+
+.modal-icon-button {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  color: var(--clay-muted);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: transform 180ms var(--ease-clay), box-shadow 180ms var(--ease-clay), color 180ms var(--ease-clay);
+}
+
+.modal-icon-button:hover {
+  color: var(--clay-accent);
+  transform: translateY(-2px);
+}
+
+.modal-icon-button:active {
+  box-shadow: var(--shadow-pressed);
+  transform: scale(0.94);
+}
+
+.topology-editor-surface {
+  min-height: 0;
+  padding: 12px;
+  background: #efebf5;
+  border-radius: 34px;
+  box-shadow: var(--shadow-pressed);
+}
+
+.topology-editor-surface .topology-preview {
+  min-height: min(560px, 58vh);
+  border-radius: 28px;
+}
+
+.topology-modal-footer {
+  padding: 16px 4px 2px;
+}
+
+.topology-modal-footer > span {
+  color: var(--clay-muted);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 10px;
+  align-items: center;
+}
+
+.modal-secondary-button,
+.modal-save-button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 18px;
+  font-weight: 900;
+  white-space: nowrap;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: transform 180ms var(--ease-clay), box-shadow 180ms var(--ease-clay), opacity 180ms var(--ease-clay);
+}
+
+.modal-secondary-button {
+  color: var(--clay-muted);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow-card);
+}
+
+.modal-save-button {
+  color: #ffffff;
+  background: linear-gradient(135deg, #34d399, #10b981);
+  box-shadow:
+    12px 12px 24px rgba(16, 185, 129, 0.28),
+    -8px -8px 16px rgba(255, 255, 255, 0.42),
+    inset 4px 4px 8px rgba(255, 255, 255, 0.34),
+    inset -4px -4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.modal-secondary-button:hover,
+.modal-save-button:hover:not(:disabled) {
+  transform: translateY(-3px);
+}
+
+.modal-secondary-button:active,
+.modal-save-button:active:not(:disabled) {
+  box-shadow: var(--shadow-pressed);
+  transform: scale(0.94);
+}
+
+.modal-save-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .ai-chat-panel {
@@ -951,6 +1127,26 @@ h1 {
   }
 }
 
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes chat-slide-in {
   from {
     opacity: 0;
@@ -1030,6 +1226,36 @@ h1 {
 
   .template-grid {
     grid-template-columns: 1fr;
+  }
+
+  .topology-modal-backdrop {
+    padding: 12px;
+  }
+
+  .topology-modal {
+    max-height: calc(100vh - 24px);
+    padding: 14px;
+    border-radius: 32px;
+  }
+
+  .topology-modal-header,
+  .topology-modal-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topology-modal-footer {
+    gap: 12px;
+  }
+
+  .modal-actions,
+  .modal-secondary-button,
+  .modal-save-button {
+    width: 100%;
+  }
+
+  .topology-editor-surface .topology-preview {
+    min-height: 380px;
   }
 
   .ai-chat-panel {

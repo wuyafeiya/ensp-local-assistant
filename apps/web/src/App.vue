@@ -15,14 +15,22 @@ import {
   UserRound,
   X,
 } from 'lucide-vue-next'
+import type { TopologyLayoutNode } from '@ensp-assistant/shared'
 import TemplateCard from './components/TemplateCard.vue'
+import TopologyEditorModal from './components/TopologyEditorModal.vue'
 import { useWorkbench } from './composables/useWorkbench'
 
 const workbench = useWorkbench()
 const chatInput = ref('')
+const layoutEditorLabId = ref('')
+const isSavingLayout = ref(false)
 
 const activeChatLab = computed(() => {
   return workbench.labs.value.find(lab => lab.id === workbench.chatLabId.value) ?? null
+})
+
+const activeLayoutLab = computed(() => {
+  return workbench.labs.value.find(lab => lab.id === layoutEditorLabId.value) ?? null
 })
 
 const navigationItems = [
@@ -42,6 +50,26 @@ async function sendChat() {
     return
   chatInput.value = ''
   await workbench.sendChatMessage(text)
+}
+
+function openLayoutEditor(labId: string) {
+  layoutEditorLabId.value = labId
+}
+
+function closeLayoutEditor() {
+  if (!isSavingLayout.value)
+    layoutEditorLabId.value = ''
+}
+
+async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
+  if (!layoutEditorLabId.value)
+    return
+
+  isSavingLayout.value = true
+  const saved = await workbench.saveLayout(layoutEditorLabId.value, nodes)
+  isSavingLayout.value = false
+  if (saved)
+    layoutEditorLabId.value = ''
 }
 </script>
 
@@ -114,10 +142,18 @@ async function sendChat() {
           :lab="lab"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
-          @save-layout="workbench.saveLayout"
+          @edit-layout="openLayoutEditor"
         />
       </section>
     </main>
+
+    <TopologyEditorModal
+      v-if="activeLayoutLab"
+      :lab="activeLayoutLab"
+      :saving="isSavingLayout"
+      @close="closeLayoutEditor"
+      @save="saveEditorLayout"
+    />
 
     <aside v-if="workbench.chatLabId.value" class="ai-chat-panel" aria-label="实验 AI 助手">
       <div class="ai-chat-header">

@@ -1,64 +1,47 @@
 <script setup lang="ts">
-import { ExternalLink, FileCheck2, FileTerminal, Play, Route, Save, TriangleAlert } from 'lucide-vue-next'
-import { ref, watch } from 'vue'
-import type { LabProject, TopologyLayoutNode, TopologyPreview as TopologyPreviewData } from '@ensp-assistant/shared'
+import { ExternalLink, FileCheck2, FileTerminal, PencilLine, Play, Route, TriangleAlert } from 'lucide-vue-next'
+import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
-const props = defineProps<{
+defineProps<{
   lab: LabProject
 }>()
 
 const emit = defineEmits<{
   launch: [labId: string]
   openConfigs: [labId: string]
-  saveLayout: [labId: string, nodes: TopologyLayoutNode[]]
+  editLayout: [labId: string]
 }>()
 
-const localPreview = ref<TopologyPreviewData | null>(clonePreview(props.lab.preview))
-
-watch(() => props.lab.preview, (preview) => {
-  localPreview.value = clonePreview(preview)
-}, { deep: true })
-
-function clonePreview(preview: TopologyPreviewData | null): TopologyPreviewData | null {
-  return preview ? JSON.parse(JSON.stringify(preview)) as TopologyPreviewData : null
-}
-
 function previewLabel(lab: LabProject) {
-  if (!localPreview.value)
+  if (!lab.preview)
     return '未生成预览'
-  if (localPreview.value.parseStatus === 'failed')
+  if (lab.preview.parseStatus === 'failed')
     return '解析失败'
-  if (localPreview.value.parseStatus === 'partial')
+  if (lab.preview.parseStatus === 'partial')
     return '预览不完整'
-  return '可拖拽编辑'
-}
-
-function moveNode(node: TopologyLayoutNode) {
-  if (!localPreview.value)
-    return
-  localPreview.value = {
-    ...localPreview.value,
-    nodes: localPreview.value.nodes.map(item => item.id === node.id ? { ...item, x: node.x, y: node.y } : item),
-  }
-}
-
-function saveCurrentLayout() {
-  if (!localPreview.value)
-    return
-  emit('saveLayout', props.lab.id, localPreview.value.nodes.map(node => ({ id: node.id, x: node.x, y: node.y })))
+  return '拓扑预览'
 }
 </script>
 
 <template>
   <article class="template-card">
     <div class="template-preview-wrap">
-      <TopologyPreview :preview="localPreview" :title="lab.name" :uid="lab.id" editable @move-node="moveNode" />
-      <div class="preview-badge" :class="localPreview?.parseStatus">
-        <TriangleAlert v-if="localPreview?.parseStatus === 'failed' || localPreview?.parseStatus === 'partial'" :size="14" />
+      <TopologyPreview :preview="lab.preview" :title="lab.name" :uid="lab.id" />
+      <div class="preview-badge" :class="lab.preview?.parseStatus">
+        <TriangleAlert v-if="lab.preview?.parseStatus === 'failed' || lab.preview?.parseStatus === 'partial'" :size="14" />
         <Route v-else :size="14" />
         <span>{{ previewLabel(lab) }}</span>
       </div>
+      <button
+        class="preview-edit-button"
+        type="button"
+        :disabled="!lab.preview || lab.preview.parseStatus === 'failed'"
+        title="编辑拓扑布局"
+        @click="emit('editLayout', lab.id)"
+      >
+        <PencilLine :size="17" />
+      </button>
     </div>
 
     <div class="template-card-top">
@@ -91,10 +74,6 @@ function saveCurrentLayout() {
     <div class="template-footer">
       <span class="template-date">{{ lab.modifiedAt ? new Date(lab.modifiedAt).toLocaleDateString('zh-CN') : '未记录' }}</span>
       <div class="template-actions">
-        <button class="ai-button" type="button" :disabled="!localPreview" @click="saveCurrentLayout">
-          <Save :size="16" />
-          <span>保存布局</span>
-        </button>
         <button class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
           <Play :size="16" />
           <span>启动</span>

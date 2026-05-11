@@ -82,7 +82,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="topology-preview" :class="{ empty: !preview || preview.parseStatus === 'failed', editable }">
-    <div class="preview-title">{{ title }}</div>
     <svg ref="svgRef" viewBox="0 0 600 340" role="img" :aria-label="`${title} 拓扑预览`">
       <defs>
         <radialGradient :id="`${safeUid}-mesh`" cx="20%" cy="12%" r="90%">

@@ -1,4 +1,4 @@
-import type { AppSettings, LabProject } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -45,9 +45,16 @@ export function openLabConfigs(labId: string) {
   })
 }
 
-export function redrawLabPreview(labId: string) {
-  return request<LabProject>(`/api/labs/${labId}/ai-preview`, {
+export function saveLabLayout(labId: string, nodes: TopologyLayoutNode[]) {
+  return request<LabProject>(`/api/labs/${labId}/layout`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify({ nodes }),
+  })
+}
+
+export function chatWithLab(labId: string, messages: ChatMessage[]) {
+  return request<{ message: string }>(`/api/labs/${labId}/chat`, {
+    method: 'POST',
+    body: JSON.stringify({ messages }),
   })
 }

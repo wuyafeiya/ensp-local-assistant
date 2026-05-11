@@ -4,5 +4,6 @@ dist
 .env
 .env.local
 data/settings.json
+data/layouts
 *.log
 *.tsbuildinfo

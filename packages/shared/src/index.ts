@@ -1,6 +1,6 @@
 export type LabStatus = 'ready' | 'missing-topology' | 'demo'
 export type TopologyDeviceType = 'router' | 'switch' | 'pc' | 'server' | 'cloud' | 'firewall' | 'unknown'
-export type TopologyParseStatus = 'ready' | 'partial' | 'failed' | 'demo' | 'ai'
+export type TopologyParseStatus = 'ready' | 'partial' | 'failed' | 'demo'
 
 export interface AppSettings {
   labRoot: string
@@ -34,6 +34,17 @@ export interface TopologyPreview {
   nodes: TopologyPreviewNode[]
   links: TopologyPreviewLink[]
   warnings: string[]
+}
+
+export interface TopologyLayoutNode {
+  id: string
+  x: number
+  y: number
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 export interface LabProject {

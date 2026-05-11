@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
 import type { LabProject } from '@ensp-assistant/shared'
+import { applySavedLayout } from './layoutStore.js'
 import { buildTopologyPreview } from './topologyPreview.js'
 
 export const labIndex = new Map<string, LabProject>()
@@ -55,7 +56,7 @@ async function projectFromPath(path: string): Promise<LabProject> {
     .map(file => ({ name: basename(file), path: file }))
   const name = basename(path).replace(/\.topo$/i, '')
   const protocol = inferProtocol(name)
-  const preview = topologyFile ? await buildTopologyPreview(topologyFile) : null
+  const preview = await applySavedLayout(idForPath(path), topologyFile ? await buildTopologyPreview(topologyFile) : null)
 
   return {
     id: idForPath(path),

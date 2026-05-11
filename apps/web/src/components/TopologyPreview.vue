@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import type { TopologyDeviceType, TopologyPreview } from '@ensp-assistant/shared'
 
 const props = defineProps<{
   preview: TopologyPreview | null
   title: string
   uid: string
+  editable?: boolean
 }>()
 
+const emit = defineEmits<{
+  moveNode: [node: { id: string, x: number, y: number }]
+}>()
+
+const svgRef = ref<SVGSVGElement | null>(null)
+const draggingNodeId = ref('')
 const safeUid = computed(() => props.uid.replace(/[^a-zA-Z0-9_-]/g, ''))
 
 const nodeMap = computed(() => {
@@ -33,12 +40,50 @@ function gradientFor(type: TopologyDeviceType) {
   const key = type === 'unknown' ? 'router' : type
   return `url(#${safeUid.value}-${key})`
 }
+
+function pointFromEvent(event: PointerEvent) {
+  const rect = svgRef.value?.getBoundingClientRect()
+  if (!rect)
+    return null
+  return {
+    x: Math.round(Math.max(36, Math.min(564, ((event.clientX - rect.left) / rect.width) * 600))),
+    y: Math.round(Math.max(44, Math.min(296, ((event.clientY - rect.top) / rect.height) * 340))),
+  }
+}
+
+function onNodePointerDown(nodeId: string, event: PointerEvent) {
+  if (!props.editable)
+    return
+  event.preventDefault()
+  event.stopPropagation()
+  draggingNodeId.value = nodeId
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', onPointerUp, { once: true })
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!draggingNodeId.value)
+    return
+  const point = pointFromEvent(event)
+  if (point)
+    emit('moveNode', { id: draggingNodeId.value, ...point })
+}
+
+function onPointerUp() {
+  draggingNodeId.value = ''
+  window.removeEventListener('pointermove', onPointerMove)
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', onPointerUp)
+})
 </script>
 
 <template>
-  <div class="topology-preview" :class="{ empty: !preview || preview.parseStatus === 'failed' }">
+  <div class="topology-preview" :class="{ empty: !preview || preview.parseStatus === 'failed', editable }">
     <div class="preview-title">{{ title }}</div>
-    <svg viewBox="0 0 600 340" role="img" :aria-label="`${title} 拓扑预览`">
+    <svg ref="svgRef" viewBox="0 0 600 340" role="img" :aria-label="`${title} 拓扑预览`">
       <defs>
         <radialGradient :id="`${safeUid}-mesh`" cx="20%" cy="12%" r="90%">
           <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95" />
@@ -92,6 +137,7 @@ function gradientFor(type: TopologyDeviceType) {
           :key="node.id"
           :class="iconClass(node.type)"
           :transform="`translate(${node.x}, ${node.y})`"
+          @pointerdown="onNodePointerDown(node.id, $event)"
         >
           <rect x="-35" y="-25" width="70" height="50" rx="18" :fill="gradientFor(node.type)" :filter="`url(#${safeUid}-soft-shadow)`" />
           <path v-if="node.type === 'router'" d="M-18 -2 H18 M-8 -12 L-18 -2 L-8 8 M8 -12 L18 -2 L8 8" />

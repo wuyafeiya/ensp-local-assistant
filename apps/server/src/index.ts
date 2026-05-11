@@ -1,7 +1,8 @@
 import cors from 'cors'
 import express from 'express'
-import { buildAiTopologyPreview } from './aiTopology.js'
+import { chatWithLab } from './aiTopology.js'
 import { labIndex, scanLabs } from './labScanner.js'
+import { saveLayout } from './layoutStore.js'
 import { openLocalPath, openTopology } from './opener.js'
 import { readSettings, writeSettings } from './settings.js'
 
@@ -83,7 +84,29 @@ app.post('/api/labs/:id/open-configs', async (req, res, next) => {
   }
 })
 
-app.post('/api/labs/:id/ai-preview', async (req, res, next) => {
+app.post('/api/labs/:id/layout', async (req, res, next) => {
+  try {
+    const lab = labIndex.get(req.params.id)
+
+    if (!lab?.preview) {
+      res.status(404).json({ error: 'Topology preview not found. Scan labs first.' })
+      return
+    }
+
+    const nodes = await saveLayout(req.params.id, req.body.nodes ?? [])
+    const positions = new Map(nodes.map(node => [node.id, node]))
+    lab.preview.nodes = lab.preview.nodes.map((node) => {
+      const position = positions.get(node.id)
+      return position ? { ...node, x: position.x, y: position.y } : node
+    })
+    res.json({ data: lab })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/labs/:id/chat', async (req, res, next) => {
   try {
     const settings = await readSettings()
     const lab = labIndex.get(req.params.id)
@@ -93,10 +116,7 @@ app.post('/api/labs/:id/ai-preview', async (req, res, next) => {
       return
     }
 
-    lab.preview = await buildAiTopologyPreview(settings, lab)
-    lab.deviceCount = lab.preview.nodes.length
-    lab.linkCount = lab.preview.links.length
-    res.json({ data: lab })
+    res.json({ data: { message: await chatWithLab(settings, lab, req.body.messages ?? []) } })
   }
   catch (error) {
     next(error)

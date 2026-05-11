@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
+  Bot,
   Boxes,
   Gauge,
   Layers3,
@@ -8,13 +9,21 @@ import {
   PlayCircle,
   RefreshCcw,
   Search,
+  SendHorizontal,
   Settings2,
   Sparkles,
+  UserRound,
+  X,
 } from 'lucide-vue-next'
 import TemplateCard from './components/TemplateCard.vue'
 import { useWorkbench } from './composables/useWorkbench'
 
 const workbench = useWorkbench()
+const chatInput = ref('')
+
+const activeChatLab = computed(() => {
+  return workbench.labs.value.find(lab => lab.id === workbench.chatLabId.value) ?? null
+})
 
 const navigationItems = [
   { label: '模板库', icon: LibraryBig, active: true },
@@ -26,6 +35,14 @@ const navigationItems = [
 onMounted(() => {
   void workbench.loadInitialData()
 })
+
+async function sendChat() {
+  const text = chatInput.value.trim()
+  if (!text)
+    return
+  chatInput.value = ''
+  await workbench.sendChatMessage(text)
+}
 </script>
 
 <template>
@@ -95,12 +112,62 @@ onMounted(() => {
           v-for="lab in workbench.filteredLabs.value"
           :key="lab.id"
           :lab="lab"
-          :ai-loading="workbench.aiLoadingLabId.value === lab.id"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
-          @redraw-ai="workbench.redrawWithAi"
+          @save-layout="workbench.saveLayout"
         />
       </section>
     </main>
+
+    <aside v-if="workbench.chatLabId.value" class="ai-chat-panel" aria-label="实验 AI 助手">
+      <div class="ai-chat-header">
+        <div class="chat-avatar">
+          <Bot :size="22" />
+        </div>
+        <div>
+          <span>AI 排错助手</span>
+          <strong>{{ activeChatLab?.name ?? '当前实验' }}</strong>
+        </div>
+        <button class="chat-icon-button" type="button" title="关闭 AI 助手" @click="workbench.closeLabChat">
+          <X :size="18" />
+        </button>
+      </div>
+
+      <div class="ai-chat-messages">
+        <div
+          v-for="(message, index) in workbench.chatMessages.value"
+          :key="`${message.role}-${index}`"
+          class="chat-message"
+          :class="message.role"
+        >
+          <div class="message-avatar">
+            <Bot v-if="message.role === 'assistant'" :size="16" />
+            <UserRound v-else :size="16" />
+          </div>
+          <p>{{ message.content }}</p>
+        </div>
+
+        <div v-if="workbench.isChatLoading.value" class="chat-message assistant loading">
+          <div class="message-avatar">
+            <Bot :size="16" />
+          </div>
+          <p>正在读取配置并分析...</p>
+        </div>
+      </div>
+
+      <form class="ai-chat-form" @submit.prevent="sendChat">
+        <label class="chat-input">
+          <input
+            v-model="chatInput"
+            type="text"
+            placeholder="问配置、邻居、路由、VLAN、ACL 或故障现象"
+            :disabled="workbench.isChatLoading.value"
+          >
+        </label>
+        <button class="chat-send-button" type="submit" :disabled="!chatInput.trim() || workbench.isChatLoading.value">
+          <SendHorizontal :size="18" />
+        </button>
+      </form>
+    </aside>
   </div>
 </template>

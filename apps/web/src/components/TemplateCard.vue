@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Bug, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
+import { Bot, Bug, FileTerminal, PencilLine, Play, Power, PowerOff } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
@@ -15,6 +15,7 @@ const emit = defineEmits<{
   editLayout: [labId: string]
   openChat: [labId: string]
   injectFault: [labId: string]
+  closeLab: [labId: string]
 }>()
 </script>
 
@@ -75,7 +76,11 @@ const emit = defineEmits<{
         >
           <Bug :size="17" />
         </button>
-        <button class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
+        <button v-if="isOpened" class="launch-button close-opened-button" type="button" title="关闭当前打开状态" @click="emit('closeLab', lab.id)">
+          <PowerOff :size="16" />
+          <span>关闭</span>
+        </button>
+        <button v-else class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
           <Play :size="16" />
           <span>启动</span>
         </button>

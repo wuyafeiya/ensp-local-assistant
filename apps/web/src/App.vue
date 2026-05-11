@@ -251,6 +251,7 @@ function closeFaultModal() {
           @edit-layout="openLayoutEditor"
           @open-chat="openChat"
           @inject-fault="beginFaultInjection"
+          @close-lab="workbench.closeOpenedLab"
         />
       </section>
 

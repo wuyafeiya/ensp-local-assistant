@@ -578,6 +578,15 @@ h1 {
   font-size: 13px;
 }
 
+.template-actions .close-opened-button {
+  background: linear-gradient(135deg, #fb7185, #e11d48);
+  box-shadow:
+    12px 12px 24px rgba(225, 29, 72, 0.24),
+    -8px -8px 16px rgba(255, 255, 255, 0.42),
+    inset 4px 4px 8px rgba(255, 255, 255, 0.32),
+    inset -4px -4px 8px rgba(0, 0, 0, 0.12);
+}
+
 .card-icon-action:hover:not(:disabled) {
   transform: translateY(-3px);
 }

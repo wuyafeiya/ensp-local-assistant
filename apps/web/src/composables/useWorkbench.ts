@@ -248,6 +248,25 @@ export function useWorkbench() {
     chatStatus.value = null
   }
 
+  async function closeOpenedLab(labId: string) {
+    if (lastOpenedLabId.value !== labId)
+      return
+
+    error.value = ''
+    try {
+      clearStoredChatMessages(labId)
+      await clearRuntimeState()
+      lastOpenedLabId.value = ''
+      activeOpenedAt.value = ''
+      status.value = '已关闭当前拓扑状态'
+      if (chatLabId.value === labId)
+        closeLabChat()
+    }
+    catch (caught) {
+      error.value = caught instanceof Error ? caught.message : '关闭拓扑状态失败'
+    }
+  }
+
   async function refreshLabChatStatus(labId = chatLabId.value) {
     if (!labId || isChatStatusLoading.value)
       return
@@ -378,6 +397,7 @@ export function useWorkbench() {
     saveLayout,
     openLabChat,
     closeLabChat,
+    closeOpenedLab,
     refreshLabChatStatus,
     sendChatMessage,
     checkLabRuntimeStatus,

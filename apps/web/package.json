@@ -1,0 +1,24 @@
+{
+  "name": "@ensp-assistant/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vue-tsc -b && vite build",
+    "typecheck": "vue-tsc -b",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@ensp-assistant/shared": "file:../../packages/shared",
+    "@vueuse/core": "^13.1.0",
+    "lucide-vue-next": "^0.503.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.3.2",
+    "typescript": "^5.8.3",
+    "vue-tsc": "^2.2.10"
+  }
+}

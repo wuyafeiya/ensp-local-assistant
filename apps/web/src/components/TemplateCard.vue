@@ -25,7 +25,7 @@ const emit = defineEmits<{
     </div>
 
     <div class="template-card-top">
-      <span class="template-protocol">{{ lab.protocol }}</span>
+      <span v-if="lab.protocol !== 'General'" class="template-protocol">{{ lab.protocol }}</span>
       <span class="template-count">{{ lab.deviceCount || '-' }} 设备 / {{ lab.linkCount || '-' }} 链路</span>
     </div>
 

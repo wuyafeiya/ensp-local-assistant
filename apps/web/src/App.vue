@@ -3,26 +3,23 @@ import { computed, onMounted, ref } from 'vue'
 import {
   Bot,
   Boxes,
-  Gauge,
   Layers3,
   LibraryBig,
   Maximize2,
   Minimize2,
-  PlayCircle,
   SendHorizontal,
-  Settings2,
   UserRound,
   X,
 } from 'lucide-vue-next'
 import type { TopologyLayoutNode } from '@ensp-assistant/shared'
 import ChatMessageContent from './components/ChatMessageContent.vue'
 import TemplateCard from './components/TemplateCard.vue'
-import TopologyEditorModal from './components/TopologyEditorModal.vue'
+import TopologyEditorPage from './components/TopologyEditorPage.vue'
 import { useWorkbench } from './composables/useWorkbench'
 
 const workbench = useWorkbench()
 const chatInput = ref('')
-const layoutEditorLabId = ref('')
+const activeView = ref<'templates' | 'editor'>('templates')
 const isSavingLayout = ref(false)
 const isChatExpanded = ref(false)
 
@@ -30,15 +27,9 @@ const activeChatLab = computed(() => {
   return workbench.labs.value.find(lab => lab.id === workbench.chatLabId.value) ?? null
 })
 
-const activeLayoutLab = computed(() => {
-  return workbench.labs.value.find(lab => lab.id === layoutEditorLabId.value) ?? null
-})
-
 const navigationItems = [
-  { label: '模板库', icon: LibraryBig, active: true },
-  { label: '拓扑预览', icon: Layers3, active: false },
-  { label: '启动记录', icon: PlayCircle, active: false },
-  { label: '本地设置', icon: Settings2, active: false },
+  { id: 'templates' as const, label: '模板库', icon: LibraryBig },
+  { id: 'editor' as const, label: '拓扑编辑', icon: Layers3 },
 ]
 
 onMounted(() => {
@@ -54,7 +45,8 @@ async function sendChat() {
 }
 
 function openLayoutEditor(labId: string) {
-  layoutEditorLabId.value = labId
+  workbench.selectedLabId.value = labId
+  activeView.value = 'editor'
 }
 
 function openChat(labId: string) {
@@ -62,20 +54,14 @@ function openChat(labId: string) {
   isChatExpanded.value = true
 }
 
-function closeLayoutEditor() {
-  if (!isSavingLayout.value)
-    layoutEditorLabId.value = ''
+function selectEditorLab(labId: string) {
+  workbench.selectedLabId.value = labId
 }
 
-async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
-  if (!layoutEditorLabId.value)
-    return
-
+async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
   isSavingLayout.value = true
-  const saved = await workbench.saveLayout(layoutEditorLabId.value, nodes)
+  await workbench.saveLayout(labId, nodes)
   isSavingLayout.value = false
-  if (saved)
-    layoutEditorLabId.value = ''
 }
 </script>
 
@@ -101,21 +87,14 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
           v-for="item in navigationItems"
           :key="item.label"
           class="nav-button"
-          :class="{ active: item.active }"
+          :class="{ active: activeView === item.id }"
           type="button"
+          @click="activeView = item.id"
         >
           <component :is="item.icon" :size="19" />
           <span>{{ item.label }}</span>
         </button>
       </nav>
-
-      <div class="sidebar-status">
-        <Gauge :size="22" />
-        <div>
-          <strong>{{ workbench.filteredLabs.value.length }}</strong>
-          <span>可用模板</span>
-        </div>
-      </div>
     </aside>
 
     <main class="template-workspace">
@@ -123,7 +102,7 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
         {{ workbench.error.value }}
       </section>
 
-      <section class="template-grid">
+      <section v-if="activeView === 'templates'" class="template-grid">
         <TemplateCard
           v-for="lab in workbench.filteredLabs.value"
           :key="lab.id"
@@ -137,15 +116,17 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
           @inject-fault="workbench.injectLabFault"
         />
       </section>
-    </main>
 
-    <TopologyEditorModal
-      v-if="activeLayoutLab"
-      :lab="activeLayoutLab"
-      :saving="isSavingLayout"
-      @close="closeLayoutEditor"
-      @save="saveEditorLayout"
-    />
+      <TopologyEditorPage
+        v-else
+        :labs="workbench.filteredLabs.value"
+        :selected-lab-id="workbench.selectedLabId.value"
+        :saving="isSavingLayout"
+        @select-lab="selectEditorLab"
+        @back="activeView = 'templates'"
+        @save="saveEditorLayout"
+      />
+    </main>
 
     <aside v-if="workbench.chatLabId.value" class="ai-chat-panel" :class="{ expanded: isChatExpanded }" aria-label="实验 AI 助手">
       <div class="ai-chat-header">

@@ -7,6 +7,7 @@ import { executeConsoleCommands, scanSerialConsoles, type SerialConsoleSnapshot 
 interface FaultCandidate {
   console: SerialConsoleSnapshot
   interfaceName: string
+  kind: string
   commands: string[]
 }
 
@@ -18,6 +19,7 @@ interface FaultLogEntry {
   port: number
   prompt: string
   interfaceName: string
+  kind: string
   commands: string[]
   output: string
 }
@@ -56,19 +58,143 @@ function isInjectableInterface(name: string, body: string) {
   ].some(keyword => text.includes(keyword)) && !/^\s*shutdown\s*$/im.test(body)
 }
 
-function buildCandidates(console: SerialConsoleSnapshot): FaultCandidate[] {
+function hasMeaningfulInterfaceConfig(body: string) {
+  return [
+    /^\s*ip address\s+/im,
+    /^\s*link-protocol\s+/im,
+    /^\s*port link-type\s+/im,
+    /^\s*port default vlan\s+/im,
+    /^\s*port trunk allow-pass vlan\s+/im,
+    /^\s*ospf cost\s+/im,
+    /^\s*isis enable\s+/im,
+  ].some(pattern => pattern.test(body))
+}
+
+function buildInterfaceCandidates(console: SerialConsoleSnapshot): FaultCandidate[] {
   return parseInterfaceBlocks(console.config)
     .filter(item => isInjectableInterface(item.name, item.body))
-    .map(item => ({
+    .filter(item => hasMeaningfulInterfaceConfig(item.body))
+    .flatMap((item) => {
+      const candidates: FaultCandidate[] = [{
+        console,
+        interfaceName: item.name,
+        kind: 'interface-shutdown',
+        commands: [
+          'system-view',
+          `interface ${item.name}`,
+          'shutdown',
+          'return',
+        ],
+      }]
+
+      if (/^\s*ip address\s+/im.test(item.body)) {
+        candidates.push({
+          console,
+          interfaceName: item.name,
+          kind: 'interface-ip-removed',
+          commands: [
+            'system-view',
+            `interface ${item.name}`,
+            'undo ip address',
+            'return',
+          ],
+        })
+      }
+
+      const defaultVlan = /^\s*port default vlan\s+(\d+)/im.exec(item.body)?.[1]
+      if (defaultVlan && defaultVlan !== '1') {
+        candidates.push({
+          console,
+          interfaceName: item.name,
+          kind: 'access-vlan-changed',
+          commands: [
+            'system-view',
+            `interface ${item.name}`,
+            'port default vlan 1',
+            'return',
+          ],
+        })
+      }
+
+      const trunkVlan = /^\s*port trunk allow-pass vlan\s+([0-9,\s-]+)/im.exec(item.body)?.[1]?.trim().split(/[\s,]+/).find(Boolean)
+      if (trunkVlan) {
+        candidates.push({
+          console,
+          interfaceName: item.name,
+          kind: 'trunk-vlan-removed',
+          commands: [
+            'system-view',
+            `interface ${item.name}`,
+            `undo port trunk allow-pass vlan ${trunkVlan}`,
+            'return',
+          ],
+        })
+      }
+
+      return candidates
+    })
+}
+
+function buildStaticRouteCandidates(console: SerialConsoleSnapshot): FaultCandidate[] {
+  return [...console.config.matchAll(/^ip route-static\s+(.+)$/gim)]
+    .map((match): FaultCandidate => ({
       console,
-      interfaceName: item.name,
+      interfaceName: 'static-route',
+      kind: 'static-route-removed',
       commands: [
         'system-view',
-        `interface ${item.name}`,
-        'shutdown',
+        `undo ip route-static ${match[1].trim()}`,
         'return',
       ],
     }))
+}
+
+function buildOspfCandidates(console: SerialConsoleSnapshot): FaultCandidate[] {
+  const blocks = console.config
+    .split(/\n#\n?/g)
+    .map(block => block.trim())
+    .filter(block => /^ospf\b/im.test(block))
+
+  return blocks.flatMap((block) => {
+    const lines = block.split('\n').map(line => line.trim())
+    const processId = /^ospf\s+(\S+)/i.exec(lines[0])?.[1] ?? '1'
+    let areaId = ''
+    const candidates: FaultCandidate[] = []
+
+    for (const line of lines.slice(1)) {
+      const areaMatch = /^area\s+(\S+)/i.exec(line)
+      if (areaMatch) {
+        areaId = areaMatch[1]
+        continue
+      }
+
+      const networkMatch = /^network\s+(.+)$/i.exec(line)
+      if (areaId && networkMatch) {
+        candidates.push({
+          console,
+          interfaceName: `ospf-${processId}-area-${areaId}`,
+          kind: 'ospf-network-removed',
+          commands: [
+            'system-view',
+            `ospf ${processId}`,
+            `area ${areaId}`,
+            `undo network ${networkMatch[1].trim()}`,
+            'return',
+          ],
+        })
+      }
+    }
+
+    return candidates
+  })
+}
+
+function buildCandidates(console: SerialConsoleSnapshot): FaultCandidate[] {
+  return [
+    ...buildInterfaceCandidates(console),
+    ...buildStaticRouteCandidates(console),
+    ...buildOspfCandidates(console),
+  ]
 }
 
 function labDeviceNames(lab: LabProject) {
@@ -137,6 +263,7 @@ export async function injectRandomFault(lab: LabProject): Promise<FaultInjection
     port: candidate.console.port,
     prompt: candidate.console.prompt,
     interfaceName: candidate.interfaceName,
+    kind: candidate.kind,
     commands: candidate.commands,
     output: commandResult.output,
   })

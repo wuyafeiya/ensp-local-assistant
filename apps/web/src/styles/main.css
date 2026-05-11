@@ -1456,9 +1456,9 @@ h1 {
 
 .chat-progress-card {
   display: grid;
-  gap: 12px;
+  gap: 13px;
   width: min(100%, 520px);
-  padding: 16px;
+  padding: 16px 17px;
   color: #e5e7eb;
   background:
     linear-gradient(135deg, rgba(17, 24, 39, 0.96), rgba(30, 41, 59, 0.96)),
@@ -1514,10 +1514,11 @@ h1 {
 }
 
 .chat-progress-steps span {
+  position: relative;
   min-width: 0;
   padding: 5px 7px;
   overflow: hidden;
-  color: #94a3b8;
+  color: #cbd5e1;
   font-size: 11px;
   font-weight: 900;
   text-align: center;
@@ -1525,12 +1526,37 @@ h1 {
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 999px;
+  animation: chat-step-glow 2.4s ease-in-out infinite;
+  animation-delay: var(--delay);
 }
 
-.chat-progress-steps .active {
-  color: #ffffff;
-  background: rgba(14, 165, 233, 0.26);
-  animation: chat-pulse 1.4s ease-in-out infinite;
+.chat-progress-log {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-progress-log li {
+  position: relative;
+  padding-left: 16px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.chat-progress-log li::before {
+  position: absolute;
+  top: 0.55em;
+  left: 2px;
+  width: 6px;
+  height: 6px;
+  content: "";
+  background: #38bdf8;
+  border-radius: 999px;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.7);
 }
 
 .ai-chat-form {
@@ -1697,6 +1723,19 @@ h1 {
   }
   100% {
     transform: translateX(240%);
+  }
+}
+
+@keyframes chat-step-glow {
+  0%,
+  100% {
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  35%,
+  55% {
+    color: #ffffff;
+    background: rgba(14, 165, 233, 0.26);
   }
 }
 

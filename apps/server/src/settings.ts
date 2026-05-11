@@ -7,16 +7,19 @@ const defaults: AppSettings = {
   enspExecutable: '',
   aiBaseUrl: process.env.ENSP_AI_BASE_URL ?? 'http://127.0.0.1:8080/v1',
   aiApiKey: process.env.ENSP_AI_API_KEY ?? 'pwd',
-  aiModel: process.env.ENSP_AI_MODEL ?? 'gpt-4o-mini',
+  aiModel: process.env.ENSP_AI_MODEL ?? 'gpt-5.5',
 }
 
+const legacyDefaultModels = new Set(['gpt-4o-mini', 'gpt-4o'])
+
 function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
+  const configuredModel = settings.aiModel?.trim()
   return {
     labRoot: settings.labRoot?.trim() || defaults.labRoot,
     enspExecutable: settings.enspExecutable?.trim() || defaults.enspExecutable,
     aiBaseUrl: settings.aiBaseUrl?.trim() || defaults.aiBaseUrl,
     aiApiKey: settings.aiApiKey?.trim() || defaults.aiApiKey,
-    aiModel: settings.aiModel?.trim() || defaults.aiModel,
+    aiModel: !configuredModel || legacyDefaultModels.has(configuredModel) ? defaults.aiModel : configuredModel,
   }
 }
 

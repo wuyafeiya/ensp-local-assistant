@@ -18,6 +18,20 @@ interface AiCommandPlan {
   note: string
 }
 
+interface ChatCompletionPayload {
+  temperature: number
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }>
+}
+
+type ChatCompletionResponse = {
+  choices?: Array<{ message?: { content?: string } }>
+}
+
+const fallbackAiModel = 'gpt-5.4'
+
 function asChatMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value))
     return []
@@ -143,6 +157,110 @@ function buildSystemPrompt(lab: LabProject, configContext: string, serialContext
 
 function latestUserText(messages: ChatMessage[]) {
   return [...messages].reverse().find(message => message.role === 'user')?.content ?? ''
+}
+
+function prefixToMask(prefix: string) {
+  const value = Number(prefix)
+  if (!Number.isInteger(value) || value < 0 || value > 32)
+    return prefix
+
+  const mask = [0, 0, 0, 0]
+  for (let index = 0; index < value; index += 1)
+    mask[Math.floor(index / 8)] += 1 << (7 - (index % 8))
+  return mask.join('.')
+}
+
+function extractIpRequest(text: string) {
+  const match = /\b((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?:\s*\/\s*|\s+)(\d{1,2}|(?:255|254|252|248|240|224|192|128|0)\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/.exec(text)
+  if (!match)
+    return null
+  return {
+    ip: match[1],
+    mask: match[2].includes('.') ? match[2] : prefixToMask(match[2]),
+  }
+}
+
+function extractInterfaces(config: string) {
+  return [...config.matchAll(/^interface\s+([A-Za-z][A-Za-z0-9/.-]+)$/gim)]
+    .map(match => match[1])
+    .filter(Boolean)
+}
+
+function normalizeInterfaceName(name: string) {
+  return name
+    .replace(/^gi(?=\d)/i, 'GigabitEthernet')
+    .replace(/^ge(?=\d)/i, 'GigabitEthernet')
+    .replace(/^eth(?=\d)/i, 'Ethernet')
+}
+
+function extractRequestedInterface(text: string, config: string) {
+  const explicit = /\b((?:GigabitEthernet|Ethernet|Serial|GE|Gi|Eth)\d+(?:\/\d+){1,3})\b/i.exec(text)?.[1]
+  if (explicit)
+    return normalizeInterfaceName(explicit)
+
+  const ordinal = /(\d+)\s*号\s*(?:接口|口)/.exec(text)?.[1]
+  if (!ordinal)
+    return ''
+
+  const interfaces = extractInterfaces(config)
+  const target = Number(ordinal)
+  const usable = interfaces.filter(name => /^(?:Ethernet|GigabitEthernet)/i.test(name))
+  return usable.find((name) => {
+    const lastNumber = Number(name.split('/').at(-1))
+    return lastNumber === target
+  }) ?? ''
+}
+
+function buildDeterministicIpPlan(text: string, lab: LabProject, scan: SerialScanResult): AiCommandPlan | null {
+  if (!/(?:ip|地址|接口|改成|修改|配置|设置)/i.test(text))
+    return null
+
+  const ipRequest = extractIpRequest(text)
+  if (!ipRequest)
+    return null
+
+  const targets = extractTargetNames(text, lab, scan)
+  const healthyConsoles = scan.consoles.filter(console => !console.error)
+  const targetConsole = targets.length
+    ? healthyConsoles.find(console => targets.some(target => consoleMatchesTarget(console, target)))
+    : healthyConsoles.length === 1 ? healthyConsoles[0] : null
+
+  if (!targetConsole)
+    return {
+      actions: [],
+      note: targets.length
+        ? `没有匹配到 ${targets.join(', ')} 的在线串口设备，未执行配置。`
+        : '当前在线设备不止一台且用户没有指定设备，未执行配置。',
+    }
+
+  const targetName = detectSysname(targetConsole.config) || targetConsole.prompt || 'AUTO'
+  const interfaceName = extractRequestedInterface(text, targetConsole.config)
+  if (!interfaceName) {
+    return {
+      actions: [{
+        target: targetName,
+        commands: ['display interface brief'],
+      }],
+      note: '没有识别到要配置的接口，先读取接口列表。',
+    }
+  }
+
+  return {
+    actions: [{
+      target: targetName,
+      commands: [
+        'system-view',
+        `interface ${interfaceName}`,
+        'undo ip address',
+        `ip address ${ipRequest.ip} ${ipRequest.mask}`,
+        'undo shutdown',
+        'quit',
+        'return',
+        'display ip interface brief',
+      ],
+    }],
+    note: `已将 ${targetName} 的 ${interfaceName} 配置为 ${ipRequest.ip} ${ipRequest.mask}。`,
+  }
 }
 
 function normalizeCommand(command: string) {
@@ -286,6 +404,47 @@ function extractJsonObject(text: string) {
   return raw.slice(start, end + 1)
 }
 
+function aiModelCandidates(settings: AppSettings) {
+  return [...new Set([settings.aiModel.trim() || 'gpt-5.5', fallbackAiModel])]
+}
+
+async function requestChatCompletion(baseUrl: string, settings: AppSettings, payload: ChatCompletionPayload, timeoutMs: number): Promise<ChatCompletionResponse> {
+  const errors: string[] = []
+
+  for (const model of aiModelCandidates(settings)) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${settings.aiApiKey}`,
+        },
+        body: JSON.stringify({
+          ...payload,
+          model,
+          reasoning_effort: 'high',
+        }),
+      })
+
+      if (response.ok)
+        return await response.json() as ChatCompletionResponse
+
+      errors.push(`${model}: ${response.status} ${await response.text()}`)
+    }
+    catch (error) {
+      errors.push(`${model}: ${error instanceof Error ? error.message : '请求失败'}`)
+    }
+    finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  throw new Error(errors.join('\n') || 'AI request failed')
+}
+
 function normalizeAiCommandPlan(value: unknown): AiCommandPlan {
   if (!value || typeof value !== 'object')
     return { actions: [], note: '' }
@@ -310,54 +469,39 @@ function normalizeAiCommandPlan(value: unknown): AiCommandPlan {
   }
 }
 
-async function askAiForCommandPlan(baseUrl: string, model: string, settings: AppSettings, lab: LabProject, configContext: string, scan: SerialScanResult, userText: string): Promise<AiCommandPlan> {
+async function askAiForCommandPlan(baseUrl: string, settings: AppSettings, lab: LabProject, configContext: string, scan: SerialScanResult, userText: string): Promise<AiCommandPlan> {
   if (!shouldAskAiForCommandPlan(userText))
     return { actions: [], note: '' }
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 30000)
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.aiApiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0,
-        messages: [
-          {
-            role: 'system',
-            content: [
-              '你负责把用户需求转换为华为 VRP 串口命令执行计划，只输出 JSON，不要输出解释。',
-              'JSON 格式：{"actions":[{"target":"设备名或 ALL 或 AUTO","commands":["命令1","命令2"]}],"note":"简短说明"}',
-              '不要添加 telnet 命令，系统已经负责连接 127.0.0.1 串口端口。',
-              '如果用户只是聊天、解释概念、或没有要求查看/执行/配置设备，actions 返回空数组。',
-              '如果用户明确指定设备名，target 使用该设备名。若用户要求所有设备，target 用 ALL。若当前只有一台在线设备且用户未指定设备，target 用 AUTO。',
-              '可以生成配置命令，例如 system-view、interface、ospf、undo、shutdown、save 等；这是本地模拟器环境。',
-              '如果目标设备不明确且在线设备超过一台，actions 返回空数组，并在 note 里要求用户指定设备。',
-            ].join('\n'),
-          },
-          {
-            role: 'user',
-            content: [
-              `实验名称：${lab.name}`,
-              `拓扑设备：${lab.preview?.nodes.map(node => node.name).join(', ') || '未识别'}`,
-              `在线串口设备：\n${buildConsoleInventory(scan)}`,
-              `本地配置摘要：\n${configContext.slice(0, 6000)}`,
-              `用户请求：${userText}`,
-            ].join('\n\n'),
-          },
-        ],
-      }),
-    })
-
-    if (!response.ok)
-      return { actions: [], note: `命令规划失败：${response.status}` }
-
-    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+    const payload = await requestChatCompletion(baseUrl, settings, {
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            '你负责把用户需求转换为华为 VRP 串口命令执行计划，只输出 JSON，不要输出解释。',
+            'JSON 格式：{"actions":[{"target":"设备名或 ALL 或 AUTO","commands":["命令1","命令2"]}],"note":"简短说明"}',
+            '不要添加 telnet 命令，系统已经负责连接 127.0.0.1 串口端口。',
+            '如果用户只是聊天、解释概念、或没有要求查看/执行/配置设备，actions 返回空数组。',
+            '如果用户明确指定设备名，target 使用该设备名。若用户要求所有设备，target 用 ALL。若当前只有一台在线设备且用户未指定设备，target 用 AUTO。',
+            '可以生成配置命令，例如 system-view、interface、ospf、undo、shutdown、save 等；这是本地模拟器环境。',
+            '如果用户用“1号接口/0号接口”表达端口，优先按在线设备配置里的 Ethernet/GigabitEthernet 末尾编号匹配。',
+            '如果目标设备不明确且在线设备超过一台，actions 返回空数组，并在 note 里要求用户指定设备。',
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: [
+            `实验名称：${lab.name}`,
+            `拓扑设备：${lab.preview?.nodes.map(node => node.name).join(', ') || '未识别'}`,
+            `在线串口设备：\n${buildConsoleInventory(scan)}`,
+            `本地配置摘要：\n${configContext.slice(0, 6000)}`,
+            `用户请求：${userText}`,
+          ].join('\n\n'),
+        },
+      ],
+    }, 30000)
     const json = extractJsonObject(payload.choices?.[0]?.message?.content ?? '')
     if (!json)
       return { actions: [], note: '未生成可执行命令计划。' }
@@ -368,9 +512,6 @@ async function askAiForCommandPlan(baseUrl: string, model: string, settings: App
       actions: [],
       note: error instanceof Error ? `命令规划失败：${error.message}` : '命令规划失败。',
     }
-  }
-  finally {
-    clearTimeout(timeout)
   }
 }
 
@@ -416,24 +557,6 @@ async function buildAiCommandExecutionContext(plan: AiCommandPlan, scan: SerialS
   return chunks.join('\n\n')
 }
 
-async function resolveModel(baseUrl: string, settings: AppSettings): Promise<string> {
-  try {
-    const response = await fetch(`${baseUrl}/models`, {
-      headers: {
-        Authorization: `Bearer ${settings.aiApiKey}`,
-      },
-    })
-    if (!response.ok)
-      return settings.aiModel
-
-    const payload = await response.json() as { data?: Array<{ id?: string }> }
-    return payload.data?.find(model => model.id)?.id ?? settings.aiModel
-  }
-  catch {
-    return settings.aiModel
-  }
-}
-
 function normalizeAssistantContent(content: string) {
   return content
     .replace(/^你好[，,！!。\s]*我是[^\n]{0,80}(?:助手|实验助手)[。\n\s]*/i, '')
@@ -455,14 +578,14 @@ export async function getLabChatStatus(lab: LabProject): Promise<LabChatStatus> 
 
 export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<LabChatResult> {
   const baseUrl = settings.aiBaseUrl.replace(/\/+$/, '')
-  const model = await resolveModel(baseUrl, settings)
   const messages = asChatMessages(rawMessages)
   const [configContext, serialSnapshot] = await Promise.all([
     readConfigContext(lab),
     scanLabSerialStatus(lab),
   ])
   const userText = latestUserText(messages)
-  const aiCommandPlan = await askAiForCommandPlan(baseUrl, model, settings, lab, configContext, serialSnapshot.scan, userText)
+  const deterministicCommandPlan = buildDeterministicIpPlan(userText, lab, serialSnapshot.scan)
+  const aiCommandPlan = deterministicCommandPlan ?? await askAiForCommandPlan(baseUrl, settings, lab, configContext, serialSnapshot.scan, userText)
   const commandPlan = aiCommandPlan.actions.length ? null : buildDiagnosticCommandPlan(userText, lab, serialSnapshot.scan)
   const commandExecutionContext = aiCommandPlan.actions.length
     ? await buildAiCommandExecutionContext(aiCommandPlan, serialSnapshot.scan)
@@ -473,39 +596,17 @@ export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMes
     buildSerialContext(serialSnapshot.scan),
     commandExecutionContext ? `\n现场命令执行结果：\n${commandExecutionContext}` : '',
   ].join('\n')
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60000)
 
-  let response: Response
-  try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.aiApiKey}`,
+  const payload = await requestChatCompletion(baseUrl, settings, {
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'system',
+        content: buildSystemPrompt(lab, configContext, serialContext),
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: 'system',
-            content: buildSystemPrompt(lab, configContext, serialContext),
-          },
-          ...messages,
-        ],
-      }),
-    })
-  }
-  finally {
-    clearTimeout(timeout)
-  }
-
-  if (!response.ok)
-    throw new Error(`AI request failed: ${response.status} ${await response.text()}`)
-
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+      ...messages,
+    ],
+  }, 60000)
   const content = payload.choices?.[0]?.message?.content
   if (!content)
     throw new Error('AI response did not include message content.')

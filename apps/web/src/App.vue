@@ -145,9 +145,31 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
         <div class="chat-avatar">
           <Bot :size="22" />
         </div>
-        <div>
+        <div class="chat-title-block">
           <span>AI 排错助手</span>
           <strong>{{ activeChatLab?.name ?? '当前实验' }}</strong>
+        </div>
+        <div class="chat-status-strip">
+          <div class="chat-status-pill">
+            <Server :size="13" />
+            <span>设备</span>
+            <strong>{{ workbench.chatStatus.value?.totalDevices || activeChatLab?.deviceCount || '-' }}</strong>
+          </div>
+          <div class="chat-status-pill online">
+            <Radio :size="13" />
+            <span>开机</span>
+            <strong>{{ workbench.chatStatus.value?.onlineDevices ?? '-' }}</strong>
+          </div>
+          <button
+            class="chat-status-refresh"
+            type="button"
+            :disabled="workbench.isChatStatusLoading.value"
+            :title="`刷新状态，当前 ${chatStatusTime}`"
+            @click="workbench.refreshLabChatStatus()"
+          >
+            <RefreshCw :size="13" />
+            <span>{{ workbench.isChatStatusLoading.value ? '检测' : chatStatusTime }}</span>
+          </button>
         </div>
         <button class="chat-icon-button" type="button" :title="isChatExpanded ? '缩小 AI 助手' : '展开 AI 助手'" @click="isChatExpanded = !isChatExpanded">
           <Minimize2 v-if="isChatExpanded" :size="18" />
@@ -155,29 +177,6 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
         </button>
         <button class="chat-icon-button" type="button" title="关闭 AI 助手" @click="workbench.closeLabChat(); isChatExpanded = false">
           <X :size="18" />
-        </button>
-      </div>
-
-      <div class="chat-status-strip">
-        <div class="chat-status-pill">
-          <Server :size="15" />
-          <span>总设备</span>
-          <strong>{{ workbench.chatStatus.value?.totalDevices || activeChatLab?.deviceCount || '-' }}</strong>
-        </div>
-        <div class="chat-status-pill online">
-          <Radio :size="15" />
-          <span>已开机</span>
-          <strong>{{ workbench.chatStatus.value?.onlineDevices ?? '-' }}</strong>
-        </div>
-        <button
-          class="chat-status-refresh"
-          type="button"
-          :disabled="workbench.isChatStatusLoading.value"
-          :title="`刷新状态，当前 ${chatStatusTime}`"
-          @click="workbench.refreshLabChatStatus()"
-        >
-          <RefreshCw :size="15" />
-          <span>{{ workbench.isChatStatusLoading.value ? '检测中' : chatStatusTime }}</span>
         </button>
       </div>
 
@@ -199,7 +198,7 @@ async function saveEditorLayout(labId: string, nodes: TopologyLayoutNode[]) {
           <div class="message-avatar">
             <Bot :size="16" />
           </div>
-          <ChatMessageContent content="正在扫描串口、执行可用诊断命令并分析..." />
+          <ChatMessageContent content="正在连接串口、执行命令并分析..." />
         </div>
       </div>
 

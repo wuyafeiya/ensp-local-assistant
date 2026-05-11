@@ -8,6 +8,16 @@ interface DiagnosticCommandPlan {
   runOnAll: boolean
 }
 
+interface CommandAction {
+  target: string
+  commands: string[]
+}
+
+interface AiCommandPlan {
+  actions: CommandAction[]
+  note: string
+}
+
 function asChatMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value))
     return []
@@ -118,7 +128,7 @@ function buildSystemPrompt(lab: LabProject, configContext: string, serialContext
     '回答要简洁、工程化、可执行。涉及实验时优先基于“串口现场快照”回答，其次参考本地配置文件和拓扑摘要。',
     '不要以“你好，我是……”开头。不要在正文开头复述实验名称、拓扑设备列表、串口检测结果或“当前检测结果”。这些状态已由界面单独展示。',
     '只有当用户明确询问连接状态、设备是否启动、当前检测到什么设备时，才简短引用串口状态；否则直接回答用户问题。',
-    '如果“现场命令执行结果”里有内容，说明系统已经通过本机 127.0.0.1 串口端口执行了用户请求的诊断命令；回答时优先解释这些输出，不要说你无法登录或无法执行。',
+    '如果“现场命令执行结果”里有内容，说明系统已经通过本机 127.0.0.1 串口端口执行了用户请求的命令；回答时优先解释这些输出，不要说你无法登录或无法执行。',
     '如果串口未连接或未读到配置，要明确告诉用户“当前没有检测到可用串口/配置”，不要假装已经看到设备配置。',
     '输出必须使用 Markdown：标题必须独占一行；命令、配置片段、设备输出必须放进 fenced code block，例如 ```text ... ```；步骤用有序列表或短标题。',
     `实验名称：${lab.name}`,
@@ -144,9 +154,7 @@ function normalizeCommand(command: string) {
 }
 
 function isSafeDiagnosticCommand(command: string) {
-  return /^(?:display|dis|ping|tracert|trace|screen-length|terminal)\b/i.test(command)
-    && !/[|&><]/.test(command)
-    && !/\b(?:system-view|interface|shutdown|undo|save|reset|reboot|delete|format|startup|rename|copy|move|mkdir|rmdir)\b/i.test(command)
+  return command.length > 0 && command.length <= 180 && !/[|&><]/.test(command)
 }
 
 function extractDiagnosticCommands(text: string) {
@@ -248,6 +256,166 @@ async function buildCommandExecutionContext(plan: DiagnosticCommandPlan | null, 
   return results.join('\n\n')
 }
 
+function shouldAskAiForCommandPlan(text: string) {
+  return /执行|运行|登录|登陆|配置|修改|创建|删除|开启|关闭|查看|检查|排查|display|dis\s+|ping|tracert|undo|shutdown|ospf|bgp|isis|vlan|acl|nat|ip route|静态路由/i.test(text)
+}
+
+function consoleLabel(console: SerialConsoleSnapshot) {
+  return detectSysname(console.config) || console.prompt || `127.0.0.1:${console.port}`
+}
+
+function buildConsoleInventory(scan: SerialScanResult) {
+  return scan.consoles
+    .filter(console => !console.error)
+    .map(console => [
+      `设备名：${consoleLabel(console)}`,
+      `串口：127.0.0.1:${console.port}`,
+      `提示符：${console.prompt || '未识别'}`,
+      `sysname：${detectSysname(console.config) || '未识别'}`,
+    ].join('\n'))
+    .join('\n\n') || '当前没有在线串口设备。'
+}
+
+function extractJsonObject(text: string) {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)?.[1]
+  const raw = fenced ?? text
+  const start = raw.indexOf('{')
+  const end = raw.lastIndexOf('}')
+  if (start < 0 || end <= start)
+    return null
+  return raw.slice(start, end + 1)
+}
+
+function normalizeAiCommandPlan(value: unknown): AiCommandPlan {
+  if (!value || typeof value !== 'object')
+    return { actions: [], note: '' }
+
+  const plan = value as { actions?: unknown, note?: unknown }
+  const actions = Array.isArray(plan.actions)
+    ? plan.actions.flatMap((item): CommandAction[] => {
+        if (!item || typeof item !== 'object')
+          return []
+        const action = item as { target?: unknown, commands?: unknown }
+        const target = typeof action.target === 'string' ? action.target.trim() : ''
+        const commands = Array.isArray(action.commands)
+          ? action.commands.map(command => typeof command === 'string' ? normalizeCommand(command) : '').filter(Boolean)
+          : []
+        return target && commands.length ? [{ target, commands: commands.slice(0, 20) }] : []
+      })
+    : []
+
+  return {
+    actions: actions.slice(0, 12),
+    note: typeof plan.note === 'string' ? plan.note : '',
+  }
+}
+
+async function askAiForCommandPlan(baseUrl: string, model: string, settings: AppSettings, lab: LabProject, configContext: string, scan: SerialScanResult, userText: string): Promise<AiCommandPlan> {
+  if (!shouldAskAiForCommandPlan(userText))
+    return { actions: [], note: '' }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.aiApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              '你负责把用户需求转换为华为 VRP 串口命令执行计划，只输出 JSON，不要输出解释。',
+              'JSON 格式：{"actions":[{"target":"设备名或 ALL 或 AUTO","commands":["命令1","命令2"]}],"note":"简短说明"}',
+              '不要添加 telnet 命令，系统已经负责连接 127.0.0.1 串口端口。',
+              '如果用户只是聊天、解释概念、或没有要求查看/执行/配置设备，actions 返回空数组。',
+              '如果用户明确指定设备名，target 使用该设备名。若用户要求所有设备，target 用 ALL。若当前只有一台在线设备且用户未指定设备，target 用 AUTO。',
+              '可以生成配置命令，例如 system-view、interface、ospf、undo、shutdown、save 等；这是本地模拟器环境。',
+              '如果目标设备不明确且在线设备超过一台，actions 返回空数组，并在 note 里要求用户指定设备。',
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: [
+              `实验名称：${lab.name}`,
+              `拓扑设备：${lab.preview?.nodes.map(node => node.name).join(', ') || '未识别'}`,
+              `在线串口设备：\n${buildConsoleInventory(scan)}`,
+              `本地配置摘要：\n${configContext.slice(0, 6000)}`,
+              `用户请求：${userText}`,
+            ].join('\n\n'),
+          },
+        ],
+      }),
+    })
+
+    if (!response.ok)
+      return { actions: [], note: `命令规划失败：${response.status}` }
+
+    const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+    const json = extractJsonObject(payload.choices?.[0]?.message?.content ?? '')
+    if (!json)
+      return { actions: [], note: '未生成可执行命令计划。' }
+    return normalizeAiCommandPlan(JSON.parse(json))
+  }
+  catch (error) {
+    return {
+      actions: [],
+      note: error instanceof Error ? `命令规划失败：${error.message}` : '命令规划失败。',
+    }
+  }
+  finally {
+    clearTimeout(timeout)
+  }
+}
+
+function resolveActionConsoles(action: CommandAction, scan: SerialScanResult) {
+  const healthyConsoles = scan.consoles.filter(console => !console.error)
+  const target = action.target.trim()
+  if (/^all$/i.test(target))
+    return healthyConsoles
+  if (/^auto$/i.test(target))
+    return healthyConsoles.length === 1 ? healthyConsoles : []
+  return healthyConsoles.filter(console => consoleMatchesTarget(console, target))
+}
+
+async function buildAiCommandExecutionContext(plan: AiCommandPlan, scan: SerialScanResult) {
+  if (!plan.actions.length)
+    return plan.note ? `命令规划说明：${plan.note}` : ''
+
+  const chunks: string[] = []
+  for (const action of plan.actions) {
+    const consoles = resolveActionConsoles(action, scan).slice(0, 8)
+    if (!consoles.length) {
+      chunks.push([
+        `## ${action.target}`,
+        '未执行：没有匹配到已连接且可用的串口设备。',
+        `计划命令：${action.commands.join(' ; ')}`,
+      ].join('\n'))
+      continue
+    }
+
+    const results = await Promise.all(consoles.map(async (console) => {
+      const result = await executeConsoleCommands(console.port, action.commands)
+      return [
+        `## ${consoleLabel(console)} / 127.0.0.1:${console.port}`,
+        `执行命令：${action.commands.join(' ; ')}`,
+        '```text',
+        result.output || '命令执行完成，但未读取到输出。',
+        '```',
+      ].join('\n')
+    }))
+    chunks.push(...results)
+  }
+
+  return chunks.join('\n\n')
+}
+
 async function resolveModel(baseUrl: string, settings: AppSettings): Promise<string> {
   try {
     const response = await fetch(`${baseUrl}/models`, {
@@ -293,8 +461,12 @@ export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMes
     readConfigContext(lab),
     scanLabSerialStatus(lab),
   ])
-  const commandPlan = buildDiagnosticCommandPlan(latestUserText(messages), lab, serialSnapshot.scan)
-  const commandExecutionContext = await buildCommandExecutionContext(commandPlan, serialSnapshot.scan)
+  const userText = latestUserText(messages)
+  const aiCommandPlan = await askAiForCommandPlan(baseUrl, model, settings, lab, configContext, serialSnapshot.scan, userText)
+  const commandPlan = aiCommandPlan.actions.length ? null : buildDiagnosticCommandPlan(userText, lab, serialSnapshot.scan)
+  const commandExecutionContext = aiCommandPlan.actions.length
+    ? await buildAiCommandExecutionContext(aiCommandPlan, serialSnapshot.scan)
+    : await buildCommandExecutionContext(commandPlan, serialSnapshot.scan)
   const serialContext = [
     buildStatusSummary(serialSnapshot.status),
     '',

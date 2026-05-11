@@ -10,6 +10,36 @@ const defaultSettings: AppSettings = {
   aiModel: '',
 }
 
+const chatStoragePrefix = 'ensp-chat-history:'
+
+function chatStorageKey(labId: string) {
+  return `${chatStoragePrefix}${labId}`
+}
+
+function loadStoredChatMessages(labId: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(chatStorageKey(labId))
+    if (!raw)
+      return []
+    const messages = JSON.parse(raw) as ChatMessage[]
+    return Array.isArray(messages)
+      ? messages.filter(message => ['user', 'assistant'].includes(message.role) && typeof message.content === 'string').slice(-80)
+      : []
+  }
+  catch {
+    return []
+  }
+}
+
+function saveStoredChatMessages(labId: string, messages: ChatMessage[]) {
+  try {
+    localStorage.setItem(chatStorageKey(labId), JSON.stringify(messages.slice(-80)))
+  }
+  catch {
+    // Ignore storage quota/privacy mode errors; chat still works for this session.
+  }
+}
+
 export function useWorkbench() {
   const settings = ref<AppSettings>({ ...defaultSettings })
   const labs = shallowRef<LabProject[]>([])
@@ -133,7 +163,7 @@ export function useWorkbench() {
 
   function openLabChat(labId: string) {
     chatLabId.value = labId
-    chatMessages.value = []
+    chatMessages.value = loadStoredChatMessages(labId)
     chatStatus.value = null
     void refreshLabChatStatus(labId)
   }
@@ -167,12 +197,14 @@ export function useWorkbench() {
 
     const nextMessages: ChatMessage[] = [...chatMessages.value, { role: 'user', content: text }]
     chatMessages.value = nextMessages
+    saveStoredChatMessages(chatLabId.value, nextMessages)
     isChatLoading.value = true
     error.value = ''
     try {
       const result = await chatWithLab(chatLabId.value, nextMessages)
       chatStatus.value = result.status
       chatMessages.value = [...nextMessages, { role: 'assistant', content: result.message }]
+      saveStoredChatMessages(chatLabId.value, chatMessages.value)
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : 'AI 对话失败'

@@ -887,12 +887,14 @@ h1 {
   grid-template-columns: 32px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-  max-width: 92%;
+  width: min(100%, 760px);
+  max-width: 100%;
 }
 
 .chat-message.user {
   align-self: flex-end;
   grid-template-columns: minmax(0, 1fr) 32px;
+  width: min(88%, 620px);
 }
 
 .chat-message.user .message-avatar {
@@ -913,16 +915,17 @@ h1 {
 
 .markdown-message {
   margin: 0;
-  padding: 12px 14px;
-  color: var(--clay-foreground);
+  padding: 16px 18px;
+  color: #1f2937;
   font-size: 14px;
-  font-weight: 600;
-  line-height: 1.6;
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 20px;
+  font-weight: 500;
+  line-height: 1.72;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(124, 58, 237, 0.08);
+  border-radius: 18px;
   box-shadow:
-    8px 8px 18px rgba(160, 150, 180, 0.15),
-    -6px -6px 16px rgba(255, 255, 255, 0.82);
+    0 18px 40px rgba(45, 35, 66, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
 .markdown-message p {
@@ -930,21 +933,78 @@ h1 {
   white-space: pre-wrap;
 }
 
+.markdown-message strong {
+  color: #111827;
+  font-weight: 800;
+}
+
+.message-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 10px;
+  color: #111827;
+  font-family: "Nunito", "Microsoft YaHei UI", sans-serif;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.message-heading::before {
+  width: 8px;
+  height: 22px;
+  content: "";
+  background: linear-gradient(180deg, #7c3aed, #0ea5e9);
+  border-radius: 999px;
+}
+
+.message-heading.level-3 {
+  font-size: 14px;
+}
+
 .markdown-message p + p,
+.markdown-message p + .message-list,
+.markdown-message .message-list + p,
 .markdown-message p + .message-code,
-.markdown-message .message-code + p {
-  margin-top: 10px;
+.markdown-message .message-code + p,
+.markdown-message .message-code + .message-heading,
+.markdown-message p + .message-heading {
+  margin-top: 12px;
+}
+
+.message-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 22px;
+}
+
+.message-list li::marker {
+  color: #7c3aed;
+  font-weight: 900;
+}
+
+.inline-code {
+  padding: 2px 6px;
+  color: #6d28d9;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+  font-weight: 700;
+  background: #f1edff;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  border-radius: 7px;
 }
 
 .message-code {
   max-width: 100%;
-  margin: 0;
-  padding: 12px;
+  margin: 10px 0 0;
+  padding: 14px 16px;
   overflow-x: auto;
-  color: #2f2850;
-  background: #efebf5;
-  border-radius: 16px;
-  box-shadow: var(--shadow-pressed);
+  color: #e5e7eb;
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 18px 34px rgba(17, 24, 39, 0.22);
 }
 
 .message-code code {
@@ -957,12 +1017,23 @@ h1 {
 .chat-message.user .markdown-message {
   color: #ffffff;
   background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  border: 0;
   box-shadow: var(--shadow-button);
+}
+
+.chat-message.user .markdown-message strong,
+.chat-message.user .inline-code {
+  color: #ffffff;
+}
+
+.chat-message.user .inline-code {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .chat-message.user .message-code {
   color: #ffffff;
-  background: rgba(51, 47, 58, 0.2);
+  background: rgba(17, 24, 39, 0.36);
   box-shadow: inset 7px 7px 14px rgba(0, 0, 0, 0.12), inset -7px -7px 14px rgba(255, 255, 255, 0.14);
 }
 

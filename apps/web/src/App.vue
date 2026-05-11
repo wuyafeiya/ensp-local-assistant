@@ -9,7 +9,6 @@ import {
   Maximize2,
   Minimize2,
   PlayCircle,
-  Power,
   RefreshCcw,
   Search,
   SendHorizontal,
@@ -128,16 +127,6 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
             <RefreshCcw :size="18" />
             <span>扫描模板</span>
           </button>
-          <button
-            class="tool-button auto-start-toggle"
-            :class="{ active: workbench.settings.value.autoStartDevices }"
-            type="button"
-            :title="workbench.settings.value.autoStartDevices ? '关闭打开时自动启动设备' : '打开时尝试自动启动设备'"
-            @click="workbench.toggleAutoStartDevices"
-          >
-            <Power :size="18" />
-            <span>{{ workbench.settings.value.autoStartDevices ? '自动启动开' : '自动启动关' }}</span>
-          </button>
 
           <label class="template-search">
             <Search :size="18" />
@@ -160,7 +149,6 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
           :key="lab.id"
           :lab="lab"
           :is-opened="workbench.lastOpenedLabId.value === lab.id"
-          :auto-start-devices="workbench.settings.value.autoStartDevices"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
           @edit-layout="openLayoutEditor"

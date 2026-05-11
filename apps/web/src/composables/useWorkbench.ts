@@ -8,8 +8,6 @@ const defaultSettings: AppSettings = {
   aiBaseUrl: '',
   aiApiKey: '',
   aiModel: '',
-  autoStartDevices: false,
-  autoStartCommand: '',
 }
 
 export function useWorkbench() {
@@ -92,7 +90,6 @@ export function useWorkbench() {
 
   async function launchLab(labId: string) {
     selectedLabId.value = labId
-    openLabChat(labId)
     error.value = ''
     try {
       const result = await openLab(labId)
@@ -128,21 +125,6 @@ export function useWorkbench() {
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : '保存布局失败'
       return false
-    }
-  }
-
-  async function toggleAutoStartDevices() {
-    const next = {
-      ...settings.value,
-      autoStartDevices: !settings.value.autoStartDevices,
-    }
-    settings.value = next
-    try {
-      settings.value = await updateSettings(next)
-      status.value = settings.value.autoStartDevices ? '打开模板时将尝试自动启动设备' : '已关闭自动启动设备'
-    }
-    catch (caught) {
-      error.value = caught instanceof Error ? caught.message : '自动启动设置保存失败'
     }
   }
 
@@ -202,7 +184,6 @@ export function useWorkbench() {
     launchLab,
     openConfigs,
     saveLayout,
-    toggleAutoStartDevices,
     openLabChat,
     closeLabChat,
     sendChatMessage,

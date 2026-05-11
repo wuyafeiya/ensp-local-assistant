@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { AppSettings, ChatMessage, LabProject } from '@ensp-assistant/shared'
+import { scanSerialConsoles, type SerialScanResult } from './serialScanner.js'
 
 function asChatMessages(value: unknown): ChatMessage[] {
   if (!Array.isArray(value))
@@ -39,7 +40,28 @@ async function readConfigContext(lab: LabProject): Promise<string> {
   return chunks.join('\n\n') || '未发现配置文件。'
 }
 
-function buildSystemPrompt(lab: LabProject, configContext: string): string {
+function buildSerialContext(scan: SerialScanResult): string {
+  if (!scan.consoles.length) {
+    return [
+      `已扫描串口端口数量：${scan.scannedPorts.length}`,
+      '未检测到已连接的 eNSP 串口控制台。可能原因：设备未启动、串口端口不在默认范围、或 eNSP 未开放本机 Telnet 控制台。',
+      '默认扫描范围：2000-2099, 20000-20150。可用 ENSP_SERIAL_PORTS 或 ENSP_SERIAL_PORT_RANGES 覆盖。',
+    ].join('\n')
+  }
+
+  return scan.consoles.map((console) => {
+    return [
+      `## 串口 127.0.0.1:${console.port}`,
+      `提示符/设备名：${console.prompt || '未识别'}`,
+      console.error ? `读取状态：${console.error}` : '读取状态：已连接并尝试读取配置',
+      '```text',
+      console.config || console.output || '未读取到输出',
+      '```',
+    ].join('\n')
+  }).join('\n\n')
+}
+
+function buildSystemPrompt(lab: LabProject, configContext: string, serialContext: string): string {
   const devices = lab.preview?.nodes
     .map(node => `${node.name}(${node.type}, ${node.model})`)
     .join(', ') || '未识别'
@@ -48,13 +70,17 @@ function buildSystemPrompt(lab: LabProject, configContext: string): string {
     .join('\n') || '未识别'
 
   return [
-    '你是华为 eNSP 实验助手，负责解释拓扑、读取配置、辅助排错。',
-    '回答要简洁、工程化、可执行。用户问配置时，优先基于提供的配置内容回答；用户问排错时，给检查命令、判断依据和修复建议。',
+    '你是华为 eNSP 实验助手，负责解释拓扑、读取串口现场配置、辅助排错。',
+    '回答要简洁、工程化、可执行。优先基于“串口现场快照”回答，其次参考本地配置文件和拓扑摘要。',
+    '如果串口未连接或未读到配置，要明确告诉用户“当前没有检测到可用串口/配置”，不要假装已经看到设备配置。',
+    '输出必须使用 Markdown：命令、配置片段、设备输出必须放进 fenced code block，例如 ```text ... ```；步骤用有序列表或短标题。',
+    '当用户问“查看机器配置/有没有连接上/排错”时，先说明检测到哪些串口端口、对应提示符或设备名，再结合实验拓扑判断可能是哪台设备。',
     `实验名称：${lab.name}`,
     `协议推断：${lab.protocol}`,
     `拓扑文件：${lab.topologyFile ?? '无'}`,
     `设备摘要：${devices}`,
     `链路摘要：\n${links}`,
+    `串口现场快照：\n${serialContext}`,
     `配置内容：\n${configContext}`,
   ].join('\n\n')
 }
@@ -80,7 +106,11 @@ async function resolveModel(baseUrl: string, settings: AppSettings): Promise<str
 export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<string> {
   const baseUrl = settings.aiBaseUrl.replace(/\/+$/, '')
   const model = await resolveModel(baseUrl, settings)
-  const configContext = await readConfigContext(lab)
+  const [configContext, serialScan] = await Promise.all([
+    readConfigContext(lab),
+    scanSerialConsoles(Math.max(6, Math.min(16, (lab.deviceCount || 6) + 4))),
+  ])
+  const serialContext = buildSerialContext(serialScan)
   const messages = asChatMessages(rawMessages)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 60000)
@@ -100,7 +130,7 @@ export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMes
         messages: [
           {
             role: 'system',
-            content: buildSystemPrompt(lab, configContext),
+            content: buildSystemPrompt(lab, configContext, serialContext),
           },
           ...messages,
         ],

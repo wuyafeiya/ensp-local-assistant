@@ -4,6 +4,7 @@ import { chatWithLab } from './aiTopology.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { saveLayout } from './layoutStore.js'
 import { openLocalPath, openTopology } from './opener.js'
+import { scanSerialConsoles } from './serialScanner.js'
 import { readSettings, writeSettings } from './settings.js'
 
 const app = express()
@@ -117,6 +118,15 @@ app.post('/api/labs/:id/chat', async (req, res, next) => {
     }
 
     res.json({ data: { message: await chatWithLab(settings, lab, req.body.messages ?? []) } })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/serial/scan', async (_req, res, next) => {
+  try {
+    res.json({ data: await scanSerialConsoles() })
   }
   catch (error) {
     next(error)

@@ -911,14 +911,13 @@ h1 {
     -5px -5px 12px rgba(255, 255, 255, 0.8);
 }
 
-.chat-message p {
+.markdown-message {
   margin: 0;
   padding: 12px 14px;
   color: var(--clay-foreground);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.6;
-  white-space: pre-wrap;
   background: rgba(255, 255, 255, 0.72);
   border-radius: 20px;
   box-shadow:
@@ -926,13 +925,48 @@ h1 {
     -6px -6px 16px rgba(255, 255, 255, 0.82);
 }
 
-.chat-message.user p {
+.markdown-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.markdown-message p + p,
+.markdown-message p + .message-code,
+.markdown-message .message-code + p {
+  margin-top: 10px;
+}
+
+.message-code {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  color: #2f2850;
+  background: #efebf5;
+  border-radius: 16px;
+  box-shadow: var(--shadow-pressed);
+}
+
+.message-code code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.chat-message.user .markdown-message {
   color: #ffffff;
   background: linear-gradient(135deg, #a78bfa, #7c3aed);
   box-shadow: var(--shadow-button);
 }
 
-.chat-message.loading p {
+.chat-message.user .message-code {
+  color: #ffffff;
+  background: rgba(51, 47, 58, 0.2);
+  box-shadow: inset 7px 7px 14px rgba(0, 0, 0, 0.12), inset -7px -7px 14px rgba(255, 255, 255, 0.14);
+}
+
+.chat-message.loading .markdown-message {
   color: var(--clay-muted);
   animation: chat-pulse 1.4s ease-in-out infinite;
 }

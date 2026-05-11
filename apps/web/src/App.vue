@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import type { TopologyLayoutNode } from '@ensp-assistant/shared'
+import ChatMessageContent from './components/ChatMessageContent.vue'
 import TemplateCard from './components/TemplateCard.vue'
 import TopologyEditorModal from './components/TopologyEditorModal.vue'
 import { useWorkbench } from './composables/useWorkbench'
@@ -173,14 +174,14 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
             <Bot v-if="message.role === 'assistant'" :size="16" />
             <UserRound v-else :size="16" />
           </div>
-          <p>{{ message.content }}</p>
+          <ChatMessageContent :content="message.content" />
         </div>
 
         <div v-if="workbench.isChatLoading.value" class="chat-message assistant loading">
           <div class="message-avatar">
             <Bot :size="16" />
           </div>
-          <p>正在读取配置并分析...</p>
+          <ChatMessageContent content="正在扫描本机串口、读取配置并分析..." />
         </div>
       </div>
 

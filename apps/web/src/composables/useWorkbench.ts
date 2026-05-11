@@ -319,16 +319,38 @@ export function useWorkbench() {
     if (!text || !chatLabId.value || isChatLoading.value)
       return
 
+    const targetLabId = chatLabId.value
+    error.value = ''
+    let currentStatus = chatStatus.value
+    if (!currentStatus || currentStatus.onlineDevices <= 0) {
+      isChatStatusLoading.value = true
+      try {
+        currentStatus = await getLabChatStatus(targetLabId)
+        chatStatus.value = currentStatus
+        await syncChatHistoryWithRuntime(targetLabId, currentStatus)
+      }
+      catch {
+        currentStatus = null
+      }
+      finally {
+        isChatStatusLoading.value = false
+      }
+    }
+
+    if ((currentStatus?.onlineDevices ?? 0) <= 0) {
+      error.value = '至少启动一台设备后才能发送 AI 对话。'
+      return
+    }
+
     const nextMessages: ChatMessage[] = [...chatMessages.value, { role: 'user', content: text }]
     chatMessages.value = nextMessages
-    const openedAt = chatLabId.value === lastOpenedLabId.value ? activeOpenedAt.value : ''
-    saveStoredChatMessages(chatLabId.value, openedAt, nextMessages, (chatStatus.value?.onlineDevices ?? 0) > 0)
+    const openedAt = targetLabId === lastOpenedLabId.value ? activeOpenedAt.value : ''
+    saveStoredChatMessages(targetLabId, openedAt, nextMessages, true)
     isChatLoading.value = true
     isChatPreparing.value = true
-    error.value = ''
     let assistantContent = ''
     try {
-      const result = await streamChatWithLab(chatLabId.value, nextMessages, {
+      const result = await streamChatWithLab(targetLabId, nextMessages, {
         onModel: (model) => {
           activeChatModel.value = model
         },
@@ -341,9 +363,9 @@ export function useWorkbench() {
       activeChatModel.value = result.model
       chatStatus.value = result.status
       chatMessages.value = [...nextMessages, { role: 'assistant', content: result.message || assistantContent }]
-      await syncChatHistoryWithRuntime(chatLabId.value, result.status)
-      const currentOpenedAt = chatLabId.value === lastOpenedLabId.value ? activeOpenedAt.value : ''
-      saveStoredChatMessages(chatLabId.value, currentOpenedAt, chatMessages.value, result.status.onlineDevices > 0)
+      await syncChatHistoryWithRuntime(targetLabId, result.status)
+      const currentOpenedAt = targetLabId === lastOpenedLabId.value ? activeOpenedAt.value : ''
+      saveStoredChatMessages(targetLabId, currentOpenedAt, chatMessages.value, result.status.onlineDevices > 0)
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : 'AI 对话失败'

@@ -63,6 +63,16 @@ const chatModelLabel = computed(() => {
   return workbench.activeChatModel.value || workbench.settings.value.aiModel || '未连接'
 })
 
+const canSendChat = computed(() => {
+  return (workbench.chatStatus.value?.onlineDevices ?? 0) > 0
+})
+
+const chatInputPlaceholder = computed(() => {
+  if (workbench.isChatStatusLoading.value)
+    return '正在检测已开机设备'
+  return canSendChat.value ? '问配置、邻居、路由、VLAN、ACL 或故障现象' : '至少启动一台设备后才能发送'
+})
+
 const navigationItems = [
   { id: 'templates' as const, label: '模板库', icon: LibraryBig },
   { id: 'editor' as const, label: '拓扑编辑', icon: Layers3 },
@@ -74,7 +84,7 @@ onMounted(() => {
 
 async function sendChat() {
   const text = chatInput.value.trim()
-  if (!text)
+  if (!text || !canSendChat.value)
     return
   chatInput.value = ''
   await workbench.sendChatMessage(text)
@@ -344,15 +354,18 @@ function closeFaultModal() {
       </div>
 
       <form class="ai-chat-form" @submit.prevent="sendChat">
+        <div v-if="!canSendChat" class="chat-offline-hint">
+          至少启动一台设备后才能发送 AI 对话
+        </div>
         <label class="chat-input">
           <input
             v-model="chatInput"
             type="text"
-            placeholder="问配置、邻居、路由、VLAN、ACL 或故障现象"
-            :disabled="workbench.isChatLoading.value"
+            :placeholder="chatInputPlaceholder"
+            :disabled="workbench.isChatLoading.value || !canSendChat"
           >
         </label>
-        <button class="chat-send-button" type="submit" :disabled="!chatInput.trim() || workbench.isChatLoading.value">
+        <button class="chat-send-button" type="submit" :disabled="!chatInput.trim() || workbench.isChatLoading.value || !canSendChat">
           <SendHorizontal :size="18" />
         </button>
       </form>

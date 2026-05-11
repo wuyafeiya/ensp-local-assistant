@@ -603,6 +603,9 @@ async function prepareLabChat(settings: AppSettings, lab: LabProject, rawMessage
     readConfigContext(lab),
     scanLabSerialStatus(lab),
   ])
+  if (serialSnapshot.status.onlineDevices <= 0)
+    throw new Error('至少启动一台设备后才能发送 AI 对话。')
+
   const userText = latestUserText(messages)
   const deterministicCommandPlan = buildDeterministicIpPlan(userText, lab, serialSnapshot.scan)
   const aiCommandPlan = deterministicCommandPlan ?? await askAiForCommandPlan(baseUrl, settings, lab, configContext, serialSnapshot.scan, userText)

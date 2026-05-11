@@ -1588,6 +1588,18 @@ h1 {
   padding-top: 12px;
 }
 
+.chat-offline-hint {
+  grid-column: 1 / -1;
+  padding: 9px 12px;
+  color: #9f1239;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  background: rgba(255, 228, 230, 0.78);
+  border: 1px solid rgba(244, 63, 94, 0.16);
+  border-radius: 16px;
+}
+
 .chat-input {
   display: flex;
   align-items: center;

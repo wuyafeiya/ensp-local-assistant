@@ -6,6 +6,7 @@ const currentFile = fileURLToPath(import.meta.url)
 export const repoRoot = resolve(dirname(currentFile), '../../..')
 export const dataDir = resolve(repoRoot, 'data')
 export const settingsFile = resolve(dataDir, 'settings.json')
+export const faultLogFile = resolve(dataDir, 'fault-injections.json')
 
 export async function ensureDataDir() {
   await mkdir(dataDir, { recursive: true })

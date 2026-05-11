@@ -13,6 +13,11 @@ export interface SerialScanResult {
   consoles: SerialConsoleSnapshot[]
 }
 
+export interface SerialCommandResult {
+  port: number
+  output: string
+}
+
 const defaultPortRanges = [
   [2000, 2099],
   [20000, 20150],
@@ -144,6 +149,51 @@ async function probeConsole(port: number): Promise<SerialConsoleSnapshot> {
     })
     socket.once('timeout', () => finish('串口读取超时'))
     socket.once('error', error => finish(error.message))
+  })
+}
+
+export async function executeConsoleCommands(port: number, commands: string[], timeoutMs = 4200): Promise<SerialCommandResult> {
+  return await new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port })
+    let output = ''
+    let settled = false
+
+    const finish = (error: Error | null = null) => {
+      if (settled)
+        return
+      settled = true
+      socket.removeAllListeners()
+      socket.destroy()
+
+      if (error) {
+        reject(error)
+        return
+      }
+
+      resolve({
+        port,
+        output: clip(cleanOutput(output), 9000),
+      })
+    }
+
+    socket.setEncoding('utf8')
+    socket.setTimeout(timeoutMs)
+    socket.on('data', (chunk) => {
+      output += chunk
+      if (output.length > 24000)
+        output = output.slice(-24000)
+    })
+    socket.once('connect', () => {
+      socket.write('\r\n')
+      commands.forEach((command, index) => {
+        setTimeout(() => {
+          socket.write(`${command}\r\n`)
+        }, 180 + index * 180)
+      })
+      setTimeout(() => finish(null), Math.max(1200, 360 + commands.length * 220))
+    })
+    socket.once('timeout', () => finish(new Error('串口执行命令超时')))
+    socket.once('error', error => finish(error))
   })
 }
 

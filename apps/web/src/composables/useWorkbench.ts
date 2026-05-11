@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, ChatMessage, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
-import { chatWithLab, getLabs, getSettings, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
+import { chatWithLab, getLabs, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -20,6 +20,7 @@ export function useWorkbench() {
   const chatLabId = ref('')
   const chatMessages = shallowRef<ChatMessage[]>([])
   const isChatLoading = ref(false)
+  const isInjectingFault = ref(false)
   const lastOpenedLabId = ref('')
   const error = ref('')
 
@@ -130,13 +131,7 @@ export function useWorkbench() {
 
   function openLabChat(labId: string) {
     chatLabId.value = labId
-    const lab = labs.value.find(item => item.id === labId)
-    chatMessages.value = [
-      {
-        role: 'assistant',
-        content: `已打开 ${lab?.name ?? '当前实验'} 的 AI 助手。你可以问我配置、连通性、协议邻居、VLAN/路由/NAT/ACL 排错。`,
-      },
-    ]
+    chatMessages.value = []
   }
 
   function closeLabChat() {
@@ -165,6 +160,22 @@ export function useWorkbench() {
     }
   }
 
+  async function injectLabFault(labId: string) {
+    selectedLabId.value = labId
+    isInjectingFault.value = true
+    error.value = ''
+    try {
+      const result = await injectFault(labId)
+      status.value = result.message
+    }
+    catch (caught) {
+      error.value = caught instanceof Error ? caught.message : '投放故障失败'
+    }
+    finally {
+      isInjectingFault.value = false
+    }
+  }
+
   return {
     settings,
     labs,
@@ -176,6 +187,7 @@ export function useWorkbench() {
     status,
     isLoading,
     isChatLoading,
+    isInjectingFault,
     error,
     filteredLabs,
     loadInitialData,
@@ -187,5 +199,6 @@ export function useWorkbench() {
     openLabChat,
     closeLabChat,
     sendChatMessage,
+    injectLabFault,
   }
 }

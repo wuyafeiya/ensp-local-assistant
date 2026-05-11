@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, LabProject, OpenLabResult, TopologyLayoutNode } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, FaultInjectionResult, LabProject, OpenLabResult, TopologyLayoutNode } from '@ensp-assistant/shared'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -56,5 +56,12 @@ export function chatWithLab(labId: string, messages: ChatMessage[]) {
   return request<{ message: string }>(`/api/labs/${labId}/chat`, {
     method: 'POST',
     body: JSON.stringify({ messages }),
+  })
+}
+
+export function injectFault(labId: string) {
+  return request<FaultInjectionResult>(`/api/labs/${labId}/inject-fault`, {
+    method: 'POST',
+    body: JSON.stringify({}),
   })
 }

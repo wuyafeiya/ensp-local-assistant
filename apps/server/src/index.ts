@@ -1,6 +1,7 @@
 import cors from 'cors'
 import express from 'express'
 import { chatWithLab } from './aiTopology.js'
+import { injectRandomFault } from './faultInjector.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { saveLayout } from './layoutStore.js'
 import { openLocalPath, openTopology } from './opener.js'
@@ -118,6 +119,22 @@ app.post('/api/labs/:id/chat', async (req, res, next) => {
     }
 
     res.json({ data: { message: await chatWithLab(settings, lab, req.body.messages ?? []) } })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/labs/:id/inject-fault', async (req, res, next) => {
+  try {
+    const lab = labIndex.get(req.params.id)
+
+    if (!lab) {
+      res.status(404).json({ error: 'Lab not found. Scan labs first.' })
+      return
+    }
+
+    res.json({ data: await injectRandomFault(lab) })
   }
   catch (error) {
     next(error)

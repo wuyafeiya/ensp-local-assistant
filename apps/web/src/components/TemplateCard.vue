@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { Bot, ExternalLink, FileCheck2, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
+import { Bot, Bug, ExternalLink, FileCheck2, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
 defineProps<{
   lab: LabProject
   isOpened: boolean
+  isFaulting: boolean
 }>()
 
 const emit = defineEmits<{
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   openConfigs: [labId: string]
   editLayout: [labId: string]
   openChat: [labId: string]
+  injectFault: [labId: string]
 }>()
 </script>
 
@@ -67,6 +69,15 @@ const emit = defineEmits<{
           @click="emit('editLayout', lab.id)"
         >
           <PencilLine :size="17" />
+        </button>
+        <button
+          class="card-icon-action fault"
+          type="button"
+          :disabled="isFaulting"
+          :title="isFaulting ? '正在投放故障' : '一键随机加错'"
+          @click="emit('injectFault', lab.id)"
+        >
+          <Bug :size="17" />
         </button>
         <button class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
           <Play :size="16" />

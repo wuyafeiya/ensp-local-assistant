@@ -59,7 +59,7 @@ function openLayoutEditor(labId: string) {
 
 function openChat(labId: string) {
   workbench.openLabChat(labId)
-  isChatExpanded.value = false
+  isChatExpanded.value = true
 }
 
 function closeLayoutEditor() {
@@ -129,10 +129,12 @@ async function saveEditorLayout(nodes: TopologyLayoutNode[]) {
           :key="lab.id"
           :lab="lab"
           :is-opened="workbench.lastOpenedLabId.value === lab.id"
+          :is-faulting="workbench.isInjectingFault.value"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
           @edit-layout="openLayoutEditor"
           @open-chat="openChat"
+          @inject-fault="workbench.injectLabFault"
         />
       </section>
     </main>

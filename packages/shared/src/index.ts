@@ -52,6 +52,13 @@ export interface OpenLabResult {
   message: string
 }
 
+export interface FaultInjectionResult {
+  injected: boolean
+  message: string
+  faultId: string
+  affectedConsoleCount: number
+}
+
 export interface LabProject {
   id: string
   name: string

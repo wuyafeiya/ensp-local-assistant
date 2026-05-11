@@ -44,10 +44,10 @@ const emit = defineEmits<{
         {{ lab.topologyFile ? '.topo' : '缺少拓扑' }}
       </span>
       <button
+        v-if="lab.configCount > 0"
         class="signal-button"
         type="button"
-        :disabled="lab.configCount === 0"
-        :title="lab.configCount ? `打开 ${lab.configFiles[0]?.name ?? '配置文件'}` : '未发现配置文件'"
+        :title="`打开 ${lab.configFiles[0]?.name ?? '配置文件'}`"
         @click="emit('openConfigs', lab.id)"
       >
         <FileTerminal :size="15" />

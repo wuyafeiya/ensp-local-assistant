@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Bug, FileCheck2, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
+import { Bot, Bug, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
@@ -38,10 +38,6 @@ const emit = defineEmits<{
       <span v-if="isOpened" class="opened-signal">
         <Power :size="15" />
         已打开
-      </span>
-      <span :class="{ muted: !lab.topologyFile }">
-        <FileCheck2 :size="15" />
-        {{ lab.topologyFile ? '.topo' : '缺少拓扑' }}
       </span>
       <button
         v-if="lab.configCount > 0"

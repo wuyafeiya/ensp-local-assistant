@@ -5,12 +5,12 @@ import { injectRandomFault } from './faultInjector.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { saveLayout } from './layoutStore.js'
 import { openLocalPath, openTopology } from './opener.js'
+import { readRuntimeState, setActiveOpenedLab } from './runtimeState.js'
 import { scanSerialConsoles } from './serialScanner.js'
 import { readSettings, writeSettings } from './settings.js'
 
 const app = express()
 const port = Number(process.env.PORT ?? 8787)
-let activeOpenedLabId = ''
 
 app.use(cors())
 app.use(express.json())
@@ -43,6 +43,15 @@ app.put('/api/settings', async (req, res, next) => {
   }
 })
 
+app.get('/api/runtime-state', async (_req, res, next) => {
+  try {
+    res.json({ data: await readRuntimeState() })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
 app.get('/api/labs', async (_req, res, next) => {
   try {
     const settings = await readSettings()
@@ -65,7 +74,7 @@ app.post('/api/labs/:id/open', async (req, res, next) => {
 
     const result = await openTopology(lab.topologyFile, settings.enspExecutable)
     if (result.opened)
-      activeOpenedLabId = lab.id
+      await setActiveOpenedLab(lab.id)
     res.json({ data: result })
   }
   catch (error) {
@@ -154,7 +163,8 @@ app.post('/api/labs/:id/inject-fault', async (req, res, next) => {
       return
     }
 
-    if (activeOpenedLabId !== lab.id) {
+    const runtimeState = await readRuntimeState()
+    if (runtimeState.activeOpenedLabId !== lab.id) {
       res.status(409).json({ error: '当前拓扑不是最近通过平台启动的拓扑。请先点击该拓扑的“启动”，再投放故障，避免误投到其它已打开拓扑。' })
       return
     }

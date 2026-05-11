@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
-import { chatWithLab, getLabChatStatus, getLabs, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
+import { chatWithLab, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -75,9 +75,17 @@ export function useWorkbench() {
     isLoading.value = true
     error.value = ''
     try {
-      settings.value = await getSettings()
-      labs.value = await getLabs()
+      const [nextSettings, nextLabs, runtimeState] = await Promise.all([
+        getSettings(),
+        getLabs(),
+        getRuntimeState(),
+      ])
+      settings.value = nextSettings
+      labs.value = nextLabs
       selectedLabId.value = labs.value[0]?.id ?? ''
+      lastOpenedLabId.value = labs.value.some(lab => lab.id === runtimeState.activeOpenedLabId)
+        ? runtimeState.activeOpenedLabId
+        : ''
       status.value = settings.value.labRoot ? '实验目录已连接' : '演示数据模式'
     }
     catch (caught) {

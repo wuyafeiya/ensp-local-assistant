@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatResult, LabChatStatus, LabProject, OpenLabResult, TopologyLayoutNode } from '@ensp-assistant/shared'
+import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatResult, LabChatStatus, LabProject, OpenLabResult, RuntimeState, TopologyLayoutNode } from '@ensp-assistant/shared'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -29,6 +29,10 @@ export function updateSettings(settings: AppSettings) {
 
 export function getLabs() {
   return request<LabProject[]>('/api/labs')
+}
+
+export function getRuntimeState() {
+  return request<RuntimeState>('/api/runtime-state')
 }
 
 export function openLab(labId: string) {

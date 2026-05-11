@@ -10,6 +10,11 @@ export interface AppSettings {
   aiModel: string
 }
 
+export interface RuntimeState {
+  activeOpenedLabId: string
+  activeOpenedAt: string | null
+}
+
 export interface TopologyPreviewNode {
   id: string
   name: string

@@ -35,6 +35,12 @@ export function getRuntimeState() {
   return request<RuntimeState>('/api/runtime-state')
 }
 
+export function clearRuntimeState() {
+  return request<RuntimeState>('/api/runtime-state', {
+    method: 'DELETE',
+  })
+}
+
 export function openLab(labId: string) {
   return request<OpenLabResult>(`/api/labs/${labId}/open`, {
     method: 'POST',

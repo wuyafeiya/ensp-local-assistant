@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
-import { chatWithLab, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
+import { chatWithLab, clearRuntimeState, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -12,31 +12,76 @@ const defaultSettings: AppSettings = {
 
 const chatStoragePrefix = 'ensp-chat-history:'
 
+interface StoredChatHistory {
+  openedAt: string
+  wasOnline: boolean
+  messages: ChatMessage[]
+}
+
 function chatStorageKey(labId: string) {
   return `${chatStoragePrefix}${labId}`
 }
 
-function loadStoredChatMessages(labId: string): ChatMessage[] {
+function readStoredChatHistory(labId: string): StoredChatHistory | null {
   try {
     const raw = localStorage.getItem(chatStorageKey(labId))
     if (!raw)
-      return []
-    const messages = JSON.parse(raw) as ChatMessage[]
-    return Array.isArray(messages)
-      ? messages.filter(message => ['user', 'assistant'].includes(message.role) && typeof message.content === 'string').slice(-80)
-      : []
+      return null
+    const parsed = JSON.parse(raw) as Partial<StoredChatHistory> | ChatMessage[]
+    const messages = Array.isArray(parsed) ? parsed : parsed.messages
+    if (!Array.isArray(messages))
+      return null
+    return {
+      openedAt: Array.isArray(parsed) ? '' : typeof parsed.openedAt === 'string' ? parsed.openedAt : '',
+      wasOnline: !Array.isArray(parsed) && parsed.wasOnline === true,
+      messages: messages.filter(message => ['user', 'assistant'].includes(message.role) && typeof message.content === 'string').slice(-80),
+    }
   }
   catch {
-    return []
+    return null
   }
 }
 
-function saveStoredChatMessages(labId: string, messages: ChatMessage[]) {
+function loadStoredChatMessages(labId: string, openedAt: string): ChatMessage[] {
+  const history = readStoredChatHistory(labId)
+  if (!history)
+    return []
+  if (!openedAt || history.openedAt !== openedAt) {
+    clearStoredChatMessages(labId)
+    return []
+  }
+  return history.messages
+}
+
+function saveStoredChatMessages(labId: string, openedAt: string, messages: ChatMessage[], wasOnline = false) {
+  if (!openedAt)
+    return
   try {
-    localStorage.setItem(chatStorageKey(labId), JSON.stringify(messages.slice(-80)))
+    const previous = readStoredChatHistory(labId)
+    localStorage.setItem(chatStorageKey(labId), JSON.stringify({
+      openedAt,
+      wasOnline: wasOnline || previous?.wasOnline === true,
+      messages: messages.slice(-80),
+    }))
   }
   catch {
     // Ignore storage quota/privacy mode errors; chat still works for this session.
+  }
+}
+
+function markStoredChatWasOnline(labId: string, openedAt: string) {
+  const history = readStoredChatHistory(labId)
+  if (!history || history.openedAt !== openedAt || history.wasOnline)
+    return
+  saveStoredChatMessages(labId, openedAt, history.messages, true)
+}
+
+function clearStoredChatMessages(labId: string) {
+  try {
+    localStorage.removeItem(chatStorageKey(labId))
+  }
+  catch {
+    // Ignore storage failures.
   }
 }
 
@@ -54,6 +99,7 @@ export function useWorkbench() {
   const isChatStatusLoading = ref(false)
   const injectingFaultLabId = ref('')
   const lastOpenedLabId = ref('')
+  const activeOpenedAt = ref('')
   const error = ref('')
 
   const filteredLabs = computed(() => {
@@ -86,6 +132,7 @@ export function useWorkbench() {
       lastOpenedLabId.value = labs.value.some(lab => lab.id === runtimeState.activeOpenedLabId)
         ? runtimeState.activeOpenedLabId
         : ''
+      activeOpenedAt.value = lastOpenedLabId.value ? runtimeState.activeOpenedAt ?? '' : ''
       status.value = settings.value.labRoot ? '实验目录已连接' : '演示数据模式'
     }
     catch (caught) {
@@ -133,8 +180,22 @@ export function useWorkbench() {
     selectedLabId.value = labId
     error.value = ''
     try {
+      const previousLabId = lastOpenedLabId.value
+      const previousOpenedAt = activeOpenedAt.value
       const result = await openLab(labId)
+      const runtimeState = await getRuntimeState()
+      if (previousLabId && previousLabId !== labId) {
+        clearStoredChatMessages(previousLabId)
+        if (chatLabId.value === previousLabId)
+          closeLabChat()
+      }
+      if (previousLabId === labId && previousOpenedAt && previousOpenedAt !== runtimeState.activeOpenedAt) {
+        clearStoredChatMessages(labId)
+        if (chatLabId.value === labId)
+          chatMessages.value = []
+      }
       lastOpenedLabId.value = labId
+      activeOpenedAt.value = runtimeState.activeOpenedAt ?? ''
       status.value = result.message
     }
     catch (caught) {
@@ -171,7 +232,8 @@ export function useWorkbench() {
 
   function openLabChat(labId: string) {
     chatLabId.value = labId
-    chatMessages.value = loadStoredChatMessages(labId)
+    const openedAt = labId === lastOpenedLabId.value ? activeOpenedAt.value : ''
+    chatMessages.value = loadStoredChatMessages(labId, openedAt)
     chatStatus.value = null
     void refreshLabChatStatus(labId)
   }
@@ -188,7 +250,9 @@ export function useWorkbench() {
 
     isChatStatusLoading.value = true
     try {
-      chatStatus.value = await getLabChatStatus(labId)
+      const nextStatus = await getLabChatStatus(labId)
+      chatStatus.value = nextStatus
+      await syncChatHistoryWithRuntime(labId, nextStatus)
     }
     catch {
       chatStatus.value = null
@@ -205,14 +269,17 @@ export function useWorkbench() {
 
     const nextMessages: ChatMessage[] = [...chatMessages.value, { role: 'user', content: text }]
     chatMessages.value = nextMessages
-    saveStoredChatMessages(chatLabId.value, nextMessages)
+    const openedAt = chatLabId.value === lastOpenedLabId.value ? activeOpenedAt.value : ''
+    saveStoredChatMessages(chatLabId.value, openedAt, nextMessages, (chatStatus.value?.onlineDevices ?? 0) > 0)
     isChatLoading.value = true
     error.value = ''
     try {
       const result = await chatWithLab(chatLabId.value, nextMessages)
       chatStatus.value = result.status
       chatMessages.value = [...nextMessages, { role: 'assistant', content: result.message }]
-      saveStoredChatMessages(chatLabId.value, chatMessages.value)
+      await syncChatHistoryWithRuntime(chatLabId.value, result.status)
+      const currentOpenedAt = chatLabId.value === lastOpenedLabId.value ? activeOpenedAt.value : ''
+      saveStoredChatMessages(chatLabId.value, currentOpenedAt, chatMessages.value, result.status.onlineDevices > 0)
     }
     catch (caught) {
       error.value = caught instanceof Error ? caught.message : 'AI 对话失败'
@@ -224,6 +291,29 @@ export function useWorkbench() {
 
   async function checkLabRuntimeStatus(labId: string) {
     return await getLabChatStatus(labId)
+  }
+
+  async function syncChatHistoryWithRuntime(labId: string, nextStatus: LabChatStatus) {
+    if (labId !== lastOpenedLabId.value || !activeOpenedAt.value)
+      return
+
+    if (nextStatus.onlineDevices > 0) {
+      markStoredChatWasOnline(labId, activeOpenedAt.value)
+      return
+    }
+
+    const history = readStoredChatHistory(labId)
+    if (!history?.wasOnline || history.openedAt !== activeOpenedAt.value)
+      return
+
+    clearStoredChatMessages(labId)
+    if (chatLabId.value === labId) {
+      chatMessages.value = []
+      chatStatus.value = nextStatus
+    }
+    lastOpenedLabId.value = ''
+    activeOpenedAt.value = ''
+    await clearRuntimeState()
   }
 
   async function injectLabFault(labId: string): Promise<FaultInjectionResult> {
@@ -252,6 +342,7 @@ export function useWorkbench() {
     chatMessages,
     chatStatus,
     lastOpenedLabId,
+    activeOpenedAt,
     query,
     status,
     isLoading,

@@ -37,3 +37,7 @@ export async function setActiveOpenedLab(labId: string): Promise<RuntimeState> {
     activeOpenedAt: new Date().toISOString(),
   })
 }
+
+export async function clearActiveOpenedLab(): Promise<RuntimeState> {
+  return await writeRuntimeState({ ...defaults })
+}

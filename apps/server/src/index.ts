@@ -5,7 +5,7 @@ import { injectRandomFault } from './faultInjector.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { saveLayout } from './layoutStore.js'
 import { openLocalPath, openTopology } from './opener.js'
-import { readRuntimeState, setActiveOpenedLab } from './runtimeState.js'
+import { clearActiveOpenedLab, readRuntimeState, setActiveOpenedLab } from './runtimeState.js'
 import { scanSerialConsoles } from './serialScanner.js'
 import { readSettings, writeSettings } from './settings.js'
 
@@ -46,6 +46,15 @@ app.put('/api/settings', async (req, res, next) => {
 app.get('/api/runtime-state', async (_req, res, next) => {
   try {
     res.json({ data: await readRuntimeState() })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.delete('/api/runtime-state', async (_req, res, next) => {
+  try {
+    res.json({ data: await clearActiveOpenedLab() })
   }
   catch (error) {
     next(error)

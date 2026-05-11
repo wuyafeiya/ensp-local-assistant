@@ -37,3 +37,10 @@ export function openLab(labId: string) {
     body: JSON.stringify({}),
   })
 }
+
+export function openLabConfigs(labId: string) {
+  return request<{ opened: boolean, message: string }>(`/api/labs/${labId}/open-configs`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}

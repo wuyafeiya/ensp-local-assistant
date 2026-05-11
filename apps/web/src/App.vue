@@ -96,6 +96,7 @@ onMounted(() => {
           :key="lab.id"
           :lab="lab"
           @launch="workbench.launchLab"
+          @open-configs="workbench.openConfigs"
         />
       </section>
     </main>

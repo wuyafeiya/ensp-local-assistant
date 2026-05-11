@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, LabProject } from '@ensp-assistant/shared'
-import { getLabs, getSettings, openLab, updateSettings } from '../services/api'
+import { getLabs, getSettings, openLab, openLabConfigs, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -25,6 +25,7 @@ export function useWorkbench() {
         lab.name,
         lab.protocol,
         lab.path,
+        ...lab.configFiles.map(file => file.name),
         ...lab.tags,
       ].some(value => value.toLowerCase().includes(needle))
     })
@@ -92,6 +93,18 @@ export function useWorkbench() {
     }
   }
 
+  async function openConfigs(labId: string) {
+    selectedLabId.value = labId
+    error.value = ''
+    try {
+      const result = await openLabConfigs(labId)
+      status.value = result.message
+    }
+    catch (caught) {
+      error.value = caught instanceof Error ? caught.message : '打开配置失败'
+    }
+  }
+
   return {
     settings,
     labs,
@@ -105,5 +118,6 @@ export function useWorkbench() {
     scanLabs,
     saveSettings,
     launchLab,
+    openConfigs,
   }
 }

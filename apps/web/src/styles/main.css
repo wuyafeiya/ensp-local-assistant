@@ -419,6 +419,27 @@ h1 {
   height: 100%;
 }
 
+.preview-title {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2;
+  max-width: calc(100% - 28px);
+  padding: 7px 12px;
+  overflow: hidden;
+  color: var(--clay-foreground);
+  font-family: "Nunito", "Microsoft YaHei UI", sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.76);
+  border-radius: 999px;
+  box-shadow:
+    8px 8px 18px rgba(160, 150, 180, 0.18),
+    -6px -6px 16px rgba(255, 255, 255, 0.9);
+}
+
 .preview-blob {
   opacity: 0.28;
   filter: blur(18px);
@@ -443,6 +464,12 @@ h1 {
   stroke: rgba(99, 95, 105, 0.5);
   stroke-linecap: round;
   stroke-width: 4;
+}
+
+.preview-link.serial path {
+  stroke: rgba(124, 58, 237, 0.72);
+  stroke-dasharray: 10 9;
+  stroke-width: 3.5;
 }
 
 .preview-node path {
@@ -553,7 +580,8 @@ h1 {
   margin-top: auto;
 }
 
-.template-signals span {
+.template-signals span,
+.signal-button {
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -567,6 +595,25 @@ h1 {
   box-shadow:
     6px 6px 14px rgba(160, 150, 180, 0.16),
     -5px -5px 12px rgba(255, 255, 255, 0.84);
+}
+
+.signal-button {
+  cursor: pointer;
+  transition: transform 180ms var(--ease-clay), opacity 180ms var(--ease-clay), box-shadow 180ms var(--ease-clay);
+}
+
+.signal-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.signal-button:active:not(:disabled) {
+  box-shadow: var(--shadow-pressed);
+  transform: scale(0.94);
+}
+
+.signal-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
 }
 
 .template-signals .muted {

@@ -141,64 +141,74 @@ function parseLinks(parsed: unknown, nodeIds: Set<string>): TopologyPreviewLink[
     if (!sourceId || !targetId || !nodeIds.has(sourceId) || !nodeIds.has(targetId))
       return
 
+    const sourceInterface = valueAsString(getAny(record, ['srcInterface', 'srcIfName', 'sourceInterface', 'startInterface']), '')
+    const targetInterface = valueAsString(getAny(record, ['dstInterface', 'destInterface', 'dstIfName', 'targetInterface', 'endInterface']), '')
+    const cableType = valueAsString(getAny(record, ['lineType', 'cableType', 'type', 'linkType']), '')
+    const serialText = `${sourceInterface} ${targetInterface} ${cableType}`.toLowerCase()
+
     links.push({
       id: valueAsString(getAny(record, ['id', 'lineId', 'linkId']), `link-${index + 1}`),
       sourceId,
       targetId,
-      sourceInterface: valueAsString(getAny(record, ['srcInterface', 'srcIfName', 'sourceInterface', 'startInterface']), ''),
-      targetInterface: valueAsString(getAny(record, ['dstInterface', 'destInterface', 'dstIfName', 'targetInterface', 'endInterface']), ''),
+      sourceInterface,
+      targetInterface,
+      cableType,
+      isSerial: serialText.includes('serial') || serialText.includes('ser') || serialText.includes('串'),
     })
   })
 
   return links
 }
 
-function applyAutoLayout(nodes: TopologyPreviewNode[]): TopologyPreviewNode[] {
-  if (!nodes.length)
-    return nodes
-
-  const hasUsableCoordinates = nodes.some(node => Number.isFinite(node.x) && Number.isFinite(node.y))
-  if (hasUsableCoordinates) {
-    return nodes.map((node, index) => ({
-      ...node,
-      x: Number.isFinite(node.x) ? node.x : 160 + (index % 4) * 150,
-      y: Number.isFinite(node.y) ? node.y : 120 + Math.floor(index / 4) * 120,
-    }))
-  }
-
-  const centerX = 300
-  const centerY = 160
-  const radiusX = Math.max(110, Math.min(210, nodes.length * 34))
-  const radiusY = Math.max(72, Math.min(122, nodes.length * 22))
-
-  return nodes.map((node, index) => {
-    const angle = (Math.PI * 2 * index) / nodes.length - Math.PI / 2
-    return {
-      ...node,
-      x: Math.round(centerX + Math.cos(angle) * radiusX),
-      y: Math.round(centerY + Math.sin(angle) * radiusY),
-    }
-  })
+function layerForNode(node: TopologyPreviewNode): number {
+  if (node.type === 'cloud')
+    return 0
+  if (node.type === 'firewall')
+    return 1
+  if (node.type === 'router')
+    return 2
+  if (node.type === 'switch')
+    return 3
+  if (node.type === 'pc' || node.type === 'server')
+    return 4
+  return 2
 }
 
-function normalizeBounds(nodes: TopologyPreviewNode[]): TopologyPreviewNode[] {
+function connectedNeighborNames(nodeId: string, links: TopologyPreviewLink[], nameById: Map<string, string>): string {
+  return links
+    .filter(link => link.sourceId === nodeId || link.targetId === nodeId)
+    .map(link => nameById.get(link.sourceId === nodeId ? link.targetId : link.sourceId) ?? '')
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .join('|')
+}
+
+function applyReadableLayout(nodes: TopologyPreviewNode[], links: TopologyPreviewLink[]): TopologyPreviewNode[] {
   if (!nodes.length)
     return nodes
 
-  const xs = nodes.map(node => node.x)
-  const ys = nodes.map(node => node.y)
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-  const width = Math.max(1, maxX - minX)
-  const height = Math.max(1, maxY - minY)
+  const nameById = new Map(nodes.map(node => [node.id, node.name]))
+  const layers = new Map<number, TopologyPreviewNode[]>()
+  for (const node of nodes) {
+    const layer = layerForNode(node)
+    layers.set(layer, [...(layers.get(layer) ?? []), node])
+  }
 
-  return nodes.map(node => ({
-    ...node,
-    x: Math.round(72 + ((node.x - minX) / width) * 456),
-    y: Math.round(62 + ((node.y - minY) / height) * 206),
-  }))
+  const orderedLayers = [...layers.entries()].sort(([a], [b]) => a - b)
+  const rowGap = orderedLayers.length > 1 ? 220 / (orderedLayers.length - 1) : 0
+
+  return orderedLayers.flatMap(([, layerNodes], layerIndex) => {
+    const sorted = [...layerNodes].sort((a, b) => {
+      const neighborCompare = connectedNeighborNames(a.id, links, nameById)
+        .localeCompare(connectedNeighborNames(b.id, links, nameById), 'zh-Hans-CN')
+      return neighborCompare || a.name.localeCompare(b.name, 'zh-Hans-CN')
+    })
+    const xGap = sorted.length > 1 ? 456 / (sorted.length - 1) : 0
+    return sorted.map((node, index) => ({
+      ...node,
+      x: Math.round(sorted.length === 1 ? 300 : 72 + xGap * index),
+      y: Math.round(58 + rowGap * layerIndex),
+    }))
+  })
 }
 
 export async function buildTopologyPreview(filePath: string): Promise<TopologyPreview> {
@@ -211,8 +221,9 @@ export async function buildTopologyPreview(filePath: string): Promise<TopologyPr
       trimValues: true,
     })
     const parsed = parser.parse(raw)
-    const nodes = normalizeBounds(applyAutoLayout(parseNodes(parsed))).slice(0, 18)
-    const links = parseLinks(parsed, new Set(nodes.map(node => node.id))).slice(0, 28)
+    const rawNodes = parseNodes(parsed).slice(0, 18)
+    const links = parseLinks(parsed, new Set(rawNodes.map(node => node.id))).slice(0, 28)
+    const nodes = applyReadableLayout(rawNodes, links)
     const warnings: string[] = []
 
     if (!nodes.length)

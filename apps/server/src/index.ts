@@ -1,7 +1,7 @@
 import cors from 'cors'
 import express from 'express'
 import { labIndex, scanLabs } from './labScanner.js'
-import { openTopology } from './opener.js'
+import { openLocalPath, openTopology } from './opener.js'
 import { readSettings, writeSettings } from './settings.js'
 
 const app = express()
@@ -59,6 +59,23 @@ app.post('/api/labs/:id/open', async (req, res, next) => {
     }
 
     res.json({ data: await openTopology(lab.topologyFile, settings.enspExecutable) })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/labs/:id/open-configs', async (req, res, next) => {
+  try {
+    const lab = labIndex.get(req.params.id)
+
+    if (!lab) {
+      res.status(404).json({ error: 'Lab not found. Scan labs first.' })
+      return
+    }
+
+    const target = lab.configFiles[0]?.path ?? lab.path
+    res.json({ data: await openLocalPath(target) })
   }
   catch (error) {
     next(error)

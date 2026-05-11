@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpenText, ExternalLink, FileCheck2, FileTerminal, Play, Route, TriangleAlert } from 'lucide-vue-next'
+import { ExternalLink, FileCheck2, FileTerminal, Play, Route, TriangleAlert } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
@@ -9,6 +9,7 @@ defineProps<{
 
 const emit = defineEmits<{
   launch: [labId: string]
+  openConfigs: [labId: string]
 }>()
 
 function previewLabel(lab: LabProject) {
@@ -48,14 +49,16 @@ function previewLabel(lab: LabProject) {
         <FileCheck2 :size="15" />
         {{ lab.topologyFile ? '.topo' : '缺少拓扑' }}
       </span>
-      <span :class="{ muted: !lab.readmeFile }">
-        <BookOpenText :size="15" />
-        {{ lab.readmeFile ? '说明' : '无说明' }}
-      </span>
-      <span :class="{ muted: lab.configCount === 0 }">
+      <button
+        class="signal-button"
+        type="button"
+        :disabled="lab.configCount === 0"
+        :title="lab.configCount ? `打开 ${lab.configFiles[0]?.name ?? '配置文件'}` : '未发现配置文件'"
+        @click="emit('openConfigs', lab.id)"
+      >
         <FileTerminal :size="15" />
         {{ lab.configCount }} 配置
-      </span>
+      </button>
     </div>
 
     <div class="template-footer">

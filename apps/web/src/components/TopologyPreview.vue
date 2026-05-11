@@ -37,6 +37,7 @@ function gradientFor(type: TopologyDeviceType) {
 
 <template>
   <div class="topology-preview" :class="{ empty: !preview || preview.parseStatus === 'failed' }">
+    <div class="preview-title">{{ title }}</div>
     <svg viewBox="0 0 600 340" role="img" :aria-label="`${title} 拓扑预览`">
       <defs>
         <radialGradient :id="`${safeUid}-mesh`" cx="20%" cy="12%" r="90%">
@@ -80,7 +81,7 @@ function gradientFor(type: TopologyDeviceType) {
       <path class="preview-grid" d="M58 72 H542 M58 128 H542 M58 184 H542 M58 240 H542 M118 42 V292 M238 42 V292 M358 42 V292 M478 42 V292" />
 
       <template v-if="preview && preview.parseStatus !== 'failed' && preview.nodes.length">
-        <g v-for="link in drawableLinks" :key="link.id" class="preview-link">
+        <g v-for="link in drawableLinks" :key="link.id" class="preview-link" :class="{ serial: link.isSerial }">
           <path
             :d="`M ${link.source.x} ${link.source.y} C ${(link.source.x + link.target.x) / 2} ${link.source.y}, ${(link.source.x + link.target.x) / 2} ${link.target.y}, ${link.target.x} ${link.target.y}`"
           />

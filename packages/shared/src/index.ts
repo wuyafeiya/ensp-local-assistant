@@ -22,6 +22,8 @@ export interface TopologyPreviewLink {
   targetId: string
   sourceInterface: string
   targetInterface: string
+  cableType: string
+  isSerial: boolean
 }
 
 export interface TopologyPreview {
@@ -37,6 +39,10 @@ export interface LabProject {
   path: string
   topologyFile: string | null
   readmeFile: string | null
+  configFiles: Array<{
+    name: string
+    path: string
+  }>
   configCount: number
   tags: string[]
   difficulty: 'starter' | 'intermediate' | 'advanced' | 'unknown'

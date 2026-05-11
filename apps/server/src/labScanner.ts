@@ -50,7 +50,9 @@ async function projectFromPath(path: string): Promise<LabProject> {
   const files = isDirectory ? await findFiles(path, 2) : [path]
   const topologyFile = files.find(file => extname(file).toLowerCase() === '.topo') ?? null
   const readmeFile = files.find(file => /^readme\.md$/i.test(basename(file))) ?? null
-  const configCount = files.filter(file => ['.cfg', '.txt', '.vrpcfg'].includes(extname(file).toLowerCase())).length
+  const configFiles = files
+    .filter(file => ['.cfg', '.txt', '.vrpcfg'].includes(extname(file).toLowerCase()))
+    .map(file => ({ name: basename(file), path: file }))
   const name = basename(path).replace(/\.topo$/i, '')
   const protocol = inferProtocol(name)
   const preview = topologyFile ? await buildTopologyPreview(topologyFile) : null
@@ -61,7 +63,8 @@ async function projectFromPath(path: string): Promise<LabProject> {
     path,
     topologyFile,
     readmeFile,
-    configCount,
+    configFiles,
+    configCount: configFiles.length,
     tags: [protocol, isDirectory ? 'Folder' : 'File'].filter(Boolean),
     difficulty: inferDifficulty(name),
     protocol,

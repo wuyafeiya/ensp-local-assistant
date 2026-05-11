@@ -518,31 +518,33 @@ h1 {
 }
 
 .template-date {
-  color: var(--clay-muted);
-  font-size: 12px;
-  font-weight: 800;
+  display: none;
 }
 
 .template-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
 }
 
 .card-icon-action,
 .launch-button {
-  min-height: 42px;
-  padding: 0 13px;
+  min-height: 38px;
+  padding: 0 10px;
 }
 
 .card-icon-action {
   display: grid;
-  width: 42px;
-  height: 42px;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   color: var(--clay-accent);
   background: rgba(255, 255, 255, 0.72);
-  border-radius: 17px;
+  border-radius: 15px;
   box-shadow: var(--shadow-card);
   cursor: pointer;
   transition: transform 180ms var(--ease-clay), box-shadow 180ms var(--ease-clay), opacity 180ms var(--ease-clay);
@@ -566,6 +568,15 @@ h1 {
 
 .card-icon-action.fault:disabled {
   animation: chat-pulse 1.1s ease-in-out infinite;
+}
+
+.template-actions .launch-button {
+  flex: 0 0 auto;
+  min-width: 68px;
+  min-height: 38px;
+  padding: 0 11px;
+  border-radius: 16px;
+  font-size: 13px;
 }
 
 .card-icon-action:hover:not(:disabled) {

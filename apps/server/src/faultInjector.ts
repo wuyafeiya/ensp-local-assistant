@@ -89,10 +89,15 @@ async function appendFaultLog(entry: FaultLogEntry) {
 
 export async function injectRandomFault(lab: LabProject): Promise<FaultInjectionResult> {
   const scan = await scanSerialConsoles()
+  const onlineConsoles = scan.consoles.filter(console => !console.error)
+  if (onlineConsoles.length === 0) {
+    throw new Error('当前没有检测到已开机设备，不能投放故障。请先启动 eNSP 设备并确认串口可连接。')
+  }
+
   const candidates = scan.consoles.flatMap(buildCandidates)
 
   if (candidates.length === 0) {
-    throw new Error('没有发现可投放故障的已连接设备。请先启动拓扑设备，并确认串口可以读取当前配置。')
+    throw new Error('已检测到设备开机，但没有发现可投放故障的接口。请确认串口可以读取当前配置。')
   }
 
   const candidate = candidates[randomInt(candidates.length)]

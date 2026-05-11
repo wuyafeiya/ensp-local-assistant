@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Bug, ExternalLink, FileCheck2, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
+import { Bot, Bug, FileCheck2, FileTerminal, PencilLine, Play, Power } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
@@ -82,7 +82,6 @@ const emit = defineEmits<{
         <button class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
           <Play :size="16" />
           <span>启动</span>
-          <ExternalLink :size="14" />
         </button>
       </div>
     </div>

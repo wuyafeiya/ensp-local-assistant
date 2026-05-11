@@ -1163,9 +1163,9 @@ h1 {
 
 .chat-status-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
-  width: min(290px, 36vw);
+  width: min(390px, 42vw);
 }
 
 .chat-status-pill,
@@ -1188,6 +1188,10 @@ h1 {
   color: var(--clay-green);
 }
 
+.chat-status-pill.model {
+  color: var(--clay-accent);
+}
+
 .chat-status-pill span,
 .chat-status-refresh span {
   overflow: hidden;
@@ -1199,11 +1203,19 @@ h1 {
 
 .chat-status-pill strong {
   grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
   color: var(--clay-foreground);
   font-family: "Nunito", "Microsoft YaHei UI", sans-serif;
   font-size: 13px;
   font-weight: 900;
   line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-status-pill.model strong {
+  font-size: 11px;
 }
 
 .chat-status-refresh {

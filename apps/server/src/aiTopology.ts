@@ -30,6 +30,22 @@ type ChatCompletionResponse = {
   choices?: Array<{ message?: { content?: string } }>
 }
 
+interface ChatCompletionResult {
+  payload: ChatCompletionResponse
+  model: string
+}
+
+interface PreparedLabChat {
+  baseUrl: string
+  payload: ChatCompletionPayload
+  status: LabChatStatus
+}
+
+interface LabChatStreamHandlers {
+  onModel?: (model: string) => void
+  onDelta?: (delta: string) => void
+}
+
 const fallbackAiModel = 'gpt-5.4'
 
 function asChatMessages(value: unknown): ChatMessage[] {
@@ -408,7 +424,7 @@ function aiModelCandidates(settings: AppSettings) {
   return [...new Set([settings.aiModel.trim() || 'gpt-5.5', fallbackAiModel])]
 }
 
-async function requestChatCompletion(baseUrl: string, settings: AppSettings, payload: ChatCompletionPayload, timeoutMs: number): Promise<ChatCompletionResponse> {
+async function requestChatCompletion(baseUrl: string, settings: AppSettings, payload: ChatCompletionPayload, timeoutMs: number): Promise<ChatCompletionResult> {
   const errors: string[] = []
 
   for (const model of aiModelCandidates(settings)) {
@@ -429,8 +445,12 @@ async function requestChatCompletion(baseUrl: string, settings: AppSettings, pay
         }),
       })
 
-      if (response.ok)
-        return await response.json() as ChatCompletionResponse
+      if (response.ok) {
+        return {
+          payload: await response.json() as ChatCompletionResponse,
+          model,
+        }
+      }
 
       errors.push(`${model}: ${response.status} ${await response.text()}`)
     }
@@ -474,7 +494,7 @@ async function askAiForCommandPlan(baseUrl: string, settings: AppSettings, lab: 
     return { actions: [], note: '' }
 
   try {
-    const payload = await requestChatCompletion(baseUrl, settings, {
+    const { payload } = await requestChatCompletion(baseUrl, settings, {
       temperature: 0,
       messages: [
         {
@@ -576,7 +596,7 @@ export async function getLabChatStatus(lab: LabProject): Promise<LabChatStatus> 
   return (await scanLabSerialStatus(lab)).status
 }
 
-export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<LabChatResult> {
+async function prepareLabChat(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<PreparedLabChat> {
   const baseUrl = settings.aiBaseUrl.replace(/\/+$/, '')
   const messages = asChatMessages(rawMessages)
   const [configContext, serialSnapshot] = await Promise.all([
@@ -597,22 +617,149 @@ export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMes
     commandExecutionContext ? `\n现场命令执行结果：\n${commandExecutionContext}` : '',
   ].join('\n')
 
-  const payload = await requestChatCompletion(baseUrl, settings, {
-    temperature: 0.2,
-    messages: [
-      {
-        role: 'system',
-        content: buildSystemPrompt(lab, configContext, serialContext),
-      },
-      ...messages,
-    ],
-  }, 60000)
+  return {
+    baseUrl,
+    status: serialSnapshot.status,
+    payload: {
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content: buildSystemPrompt(lab, configContext, serialContext),
+        },
+        ...messages,
+      ],
+    },
+  }
+}
+
+function extractStreamDelta(value: unknown) {
+  if (!value || typeof value !== 'object')
+    return ''
+  const payload = value as {
+    choices?: Array<{
+      delta?: { content?: unknown }
+      message?: { content?: unknown }
+    }>
+  }
+  const choice = payload.choices?.[0]
+  const delta = choice?.delta?.content ?? choice?.message?.content
+  return typeof delta === 'string' ? delta : ''
+}
+
+async function requestChatCompletionStream(baseUrl: string, settings: AppSettings, payload: ChatCompletionPayload, timeoutMs: number, handlers: LabChatStreamHandlers): Promise<{ message: string, model: string }> {
+  const errors: string[] = []
+
+  for (const model of aiModelCandidates(settings)) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    let content = ''
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${settings.aiApiKey}`,
+        },
+        body: JSON.stringify({
+          ...payload,
+          model,
+          reasoning_effort: 'high',
+          stream: true,
+        }),
+      })
+
+      if (!response.ok) {
+        errors.push(`${model}: ${response.status} ${await response.text()}`)
+        continue
+      }
+
+      handlers.onModel?.(model)
+      if (!response.body) {
+        const fallbackPayload = await response.json() as ChatCompletionResponse
+        return {
+          message: normalizeAssistantContent(fallbackPayload.choices?.[0]?.message?.content ?? ''),
+          model,
+        }
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done)
+          break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || trimmed.startsWith(':'))
+            continue
+
+          const raw = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed
+          if (!raw || raw === '[DONE]')
+            continue
+
+          try {
+            const delta = extractStreamDelta(JSON.parse(raw))
+            if (!delta)
+              continue
+            content += delta
+            handlers.onDelta?.(delta)
+          }
+          catch {
+            // Some compatible gateways send comments or partial keepalive lines; ignore those.
+          }
+        }
+      }
+
+      return {
+        message: normalizeAssistantContent(content),
+        model,
+      }
+    }
+    catch (error) {
+      if (content)
+        throw error
+      errors.push(`${model}: ${error instanceof Error ? error.message : '流式请求失败'}`)
+    }
+    finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  throw new Error(errors.join('\n') || 'AI stream request failed')
+}
+
+export async function chatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown): Promise<LabChatResult> {
+  const prepared = await prepareLabChat(settings, lab, rawMessages)
+  const { payload, model } = await requestChatCompletion(prepared.baseUrl, settings, prepared.payload, 60000)
   const content = payload.choices?.[0]?.message?.content
   if (!content)
     throw new Error('AI response did not include message content.')
 
   return {
     message: normalizeAssistantContent(content),
-    status: serialSnapshot.status,
+    status: prepared.status,
+    model,
+  }
+}
+
+export async function streamChatWithLab(settings: AppSettings, lab: LabProject, rawMessages: unknown, handlers: LabChatStreamHandlers): Promise<LabChatResult> {
+  const prepared = await prepareLabChat(settings, lab, rawMessages)
+  const { message, model } = await requestChatCompletionStream(prepared.baseUrl, settings, prepared.payload, 60000, handlers)
+  if (!message)
+    throw new Error('AI response did not include message content.')
+
+  return {
+    message,
+    status: prepared.status,
+    model,
   }
 }

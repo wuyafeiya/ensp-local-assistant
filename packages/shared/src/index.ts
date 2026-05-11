@@ -71,6 +71,7 @@ export interface LabChatStatus {
 export interface LabChatResult {
   message: string
   status: LabChatStatus
+  model: string
 }
 
 export interface OpenLabResult {

@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, ChatMessage, FaultInjectionResult, LabChatStatus, LabProject, TopologyLayoutNode } from '@ensp-assistant/shared'
-import { chatWithLab, clearRuntimeState, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, updateSettings } from '../services/api'
+import { clearRuntimeState, getLabChatStatus, getLabs, getRuntimeState, getSettings, injectFault, openLab, openLabConfigs, saveLabLayout, streamChatWithLab, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
@@ -95,7 +95,9 @@ export function useWorkbench() {
   const chatLabId = ref('')
   const chatMessages = shallowRef<ChatMessage[]>([])
   const chatStatus = ref<LabChatStatus | null>(null)
+  const activeChatModel = ref('')
   const isChatLoading = ref(false)
+  const isChatPreparing = ref(false)
   const isChatStatusLoading = ref(false)
   const injectingFaultLabId = ref('')
   const lastOpenedLabId = ref('')
@@ -127,6 +129,7 @@ export function useWorkbench() {
         getRuntimeState(),
       ])
       settings.value = nextSettings
+      activeChatModel.value = nextSettings.aiModel
       labs.value = nextLabs
       selectedLabId.value = labs.value[0]?.id ?? ''
       lastOpenedLabId.value = labs.value.some(lab => lab.id === runtimeState.activeOpenedLabId)
@@ -232,6 +235,7 @@ export function useWorkbench() {
 
   function openLabChat(labId: string) {
     chatLabId.value = labId
+    activeChatModel.value = settings.value.aiModel
     const openedAt = labId === lastOpenedLabId.value ? activeOpenedAt.value : ''
     chatMessages.value = loadStoredChatMessages(labId, openedAt)
     chatStatus.value = null
@@ -272,11 +276,23 @@ export function useWorkbench() {
     const openedAt = chatLabId.value === lastOpenedLabId.value ? activeOpenedAt.value : ''
     saveStoredChatMessages(chatLabId.value, openedAt, nextMessages, (chatStatus.value?.onlineDevices ?? 0) > 0)
     isChatLoading.value = true
+    isChatPreparing.value = true
     error.value = ''
+    let assistantContent = ''
     try {
-      const result = await chatWithLab(chatLabId.value, nextMessages)
+      const result = await streamChatWithLab(chatLabId.value, nextMessages, {
+        onModel: (model) => {
+          activeChatModel.value = model
+        },
+        onDelta: (delta) => {
+          assistantContent += delta
+          isChatPreparing.value = false
+          chatMessages.value = [...nextMessages, { role: 'assistant', content: assistantContent }]
+        },
+      })
+      activeChatModel.value = result.model
       chatStatus.value = result.status
-      chatMessages.value = [...nextMessages, { role: 'assistant', content: result.message }]
+      chatMessages.value = [...nextMessages, { role: 'assistant', content: result.message || assistantContent }]
       await syncChatHistoryWithRuntime(chatLabId.value, result.status)
       const currentOpenedAt = chatLabId.value === lastOpenedLabId.value ? activeOpenedAt.value : ''
       saveStoredChatMessages(chatLabId.value, currentOpenedAt, chatMessages.value, result.status.onlineDevices > 0)
@@ -286,6 +302,7 @@ export function useWorkbench() {
     }
     finally {
       isChatLoading.value = false
+      isChatPreparing.value = false
     }
   }
 
@@ -341,12 +358,14 @@ export function useWorkbench() {
     chatLabId,
     chatMessages,
     chatStatus,
+    activeChatModel,
     lastOpenedLabId,
     activeOpenedAt,
     query,
     status,
     isLoading,
     isChatLoading,
+    isChatPreparing,
     isChatStatusLoading,
     injectingFaultLabId,
     error,

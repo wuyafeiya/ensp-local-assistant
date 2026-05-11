@@ -1,6 +1,6 @@
 import cors from 'cors'
 import express from 'express'
-import { chatWithLab, getLabChatStatus } from './aiTopology.js'
+import { chatWithLab, getLabChatStatus, streamChatWithLab } from './aiTopology.js'
 import { injectRandomFault } from './faultInjector.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { saveLayout } from './layoutStore.js'
@@ -143,6 +143,44 @@ app.post('/api/labs/:id/chat', async (req, res, next) => {
     res.json({ data: await chatWithLab(settings, lab, req.body.messages ?? []) })
   }
   catch (error) {
+    next(error)
+  }
+})
+
+function writeStreamEvent(res: express.Response, event: string, data: unknown) {
+  res.write(`event: ${event}\n`)
+  res.write(`data: ${JSON.stringify(data)}\n\n`)
+}
+
+app.post('/api/labs/:id/chat-stream', async (req, res, next) => {
+  try {
+    const settings = await readSettings()
+    const lab = labIndex.get(req.params.id)
+
+    if (!lab) {
+      res.status(404).json({ error: 'Lab not found. Scan labs first.' })
+      return
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+
+    const result = await streamChatWithLab(settings, lab, req.body.messages ?? [], {
+      onModel: model => writeStreamEvent(res, 'model', { model }),
+      onDelta: delta => writeStreamEvent(res, 'delta', { delta }),
+    })
+
+    writeStreamEvent(res, 'done', result)
+    res.end()
+  }
+  catch (error) {
+    if (res.headersSent) {
+      writeStreamEvent(res, 'error', { error: error instanceof Error ? error.message : 'AI stream failed' })
+      res.end()
+      return
+    }
     next(error)
   }
 })

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   Bot,
   Boxes,
+  Cpu,
   Layers3,
   LibraryBig,
   Maximize2,
@@ -56,6 +57,10 @@ const chatStatusTime = computed(() => {
     hour: '2-digit',
     minute: '2-digit',
   })
+})
+
+const chatModelLabel = computed(() => {
+  return workbench.activeChatModel.value || workbench.settings.value.aiModel || '未连接'
 })
 
 const navigationItems = [
@@ -289,6 +294,11 @@ function closeFaultModal() {
             <span>开机</span>
             <strong>{{ workbench.chatStatus.value?.onlineDevices ?? '-' }}</strong>
           </div>
+          <div class="chat-status-pill model">
+            <Cpu :size="13" />
+            <span>模型</span>
+            <strong>{{ chatModelLabel }}</strong>
+          </div>
           <button
             class="chat-status-refresh"
             type="button"
@@ -323,7 +333,7 @@ function closeFaultModal() {
           <ChatMessageContent :content="message.content" />
         </div>
 
-        <div v-if="workbench.isChatLoading.value" class="chat-message assistant loading">
+        <div v-if="workbench.isChatPreparing.value" class="chat-message assistant loading">
           <div class="message-avatar">
             <Bot :size="16" />
           </div>

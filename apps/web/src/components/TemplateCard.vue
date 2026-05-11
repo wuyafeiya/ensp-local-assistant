@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ExternalLink, FileCheck2, FileTerminal, Play, Route, TriangleAlert } from 'lucide-vue-next'
+import { ExternalLink, FileCheck2, FileTerminal, Play, Route, Sparkles, TriangleAlert } from 'lucide-vue-next'
 import type { LabProject } from '@ensp-assistant/shared'
 import TopologyPreview from './TopologyPreview.vue'
 
 defineProps<{
   lab: LabProject
+  aiLoading: boolean
 }>()
 
 const emit = defineEmits<{
   launch: [labId: string]
   openConfigs: [labId: string]
+  redrawAi: [labId: string]
 }>()
 
 function previewLabel(lab: LabProject) {
@@ -19,6 +21,8 @@ function previewLabel(lab: LabProject) {
     return '解析失败'
   if (lab.preview.parseStatus === 'partial')
     return '预览不完整'
+  if (lab.preview.parseStatus === 'ai')
+    return 'AI拓扑'
   return '拓扑预览'
 }
 </script>
@@ -63,11 +67,17 @@ function previewLabel(lab: LabProject) {
 
     <div class="template-footer">
       <span class="template-date">{{ lab.modifiedAt ? new Date(lab.modifiedAt).toLocaleDateString('zh-CN') : '未记录' }}</span>
-      <button class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
-        <Play :size="16" />
-        <span>启动拓扑</span>
-        <ExternalLink :size="14" />
-      </button>
+      <div class="template-actions">
+        <button class="ai-button" type="button" :disabled="aiLoading" @click="emit('redrawAi', lab.id)">
+          <Sparkles :size="16" />
+          <span>{{ aiLoading ? '重绘中' : 'AI重绘' }}</span>
+        </button>
+        <button class="launch-button" type="button" :disabled="!lab.topologyFile" @click="emit('launch', lab.id)">
+          <Play :size="16" />
+          <span>启动</span>
+          <ExternalLink :size="14" />
+        </button>
+      </div>
     </div>
   </article>
 </template>

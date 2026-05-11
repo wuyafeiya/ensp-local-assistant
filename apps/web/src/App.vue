@@ -95,8 +95,10 @@ onMounted(() => {
           v-for="lab in workbench.filteredLabs.value"
           :key="lab.id"
           :lab="lab"
+          :ai-loading="workbench.aiLoadingLabId.value === lab.id"
           @launch="workbench.launchLab"
           @open-configs="workbench.openConfigs"
+          @redraw-ai="workbench.redrawWithAi"
         />
       </section>
     </main>

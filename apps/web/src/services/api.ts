@@ -44,3 +44,10 @@ export function openLabConfigs(labId: string) {
     body: JSON.stringify({}),
   })
 }
+
+export function redrawLabPreview(labId: string) {
+  return request<LabProject>(`/api/labs/${labId}/ai-preview`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}

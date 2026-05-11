@@ -1,10 +1,13 @@
 export type LabStatus = 'ready' | 'missing-topology' | 'demo'
 export type TopologyDeviceType = 'router' | 'switch' | 'pc' | 'server' | 'cloud' | 'firewall' | 'unknown'
-export type TopologyParseStatus = 'ready' | 'partial' | 'failed' | 'demo'
+export type TopologyParseStatus = 'ready' | 'partial' | 'failed' | 'demo' | 'ai'
 
 export interface AppSettings {
   labRoot: string
   enspExecutable: string
+  aiBaseUrl: string
+  aiApiKey: string
+  aiModel: string
 }
 
 export interface TopologyPreviewNode {

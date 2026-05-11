@@ -182,7 +182,7 @@ function connectedNeighborNames(nodeId: string, links: TopologyPreviewLink[], na
     .join('|')
 }
 
-function applyReadableLayout(nodes: TopologyPreviewNode[], links: TopologyPreviewLink[]): TopologyPreviewNode[] {
+export function applyReadableLayout(nodes: TopologyPreviewNode[], links: TopologyPreviewLink[]): TopologyPreviewNode[] {
   if (!nodes.length)
     return nodes
 

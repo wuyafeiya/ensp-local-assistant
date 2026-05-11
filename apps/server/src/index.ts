@@ -1,5 +1,6 @@
 import cors from 'cors'
 import express from 'express'
+import { buildAiTopologyPreview } from './aiTopology.js'
 import { labIndex, scanLabs } from './labScanner.js'
 import { openLocalPath, openTopology } from './opener.js'
 import { readSettings, writeSettings } from './settings.js'
@@ -76,6 +77,26 @@ app.post('/api/labs/:id/open-configs', async (req, res, next) => {
 
     const target = lab.configFiles[0]?.path ?? lab.path
     res.json({ data: await openLocalPath(target) })
+  }
+  catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/labs/:id/ai-preview', async (req, res, next) => {
+  try {
+    const settings = await readSettings()
+    const lab = labIndex.get(req.params.id)
+
+    if (!lab) {
+      res.status(404).json({ error: 'Lab not found. Scan labs first.' })
+      return
+    }
+
+    lab.preview = await buildAiTopologyPreview(settings, lab)
+    lab.deviceCount = lab.preview.nodes.length
+    lab.linkCount = lab.preview.links.length
+    res.json({ data: lab })
   }
   catch (error) {
     next(error)

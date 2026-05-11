@@ -1,10 +1,13 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { AppSettings, LabProject } from '@ensp-assistant/shared'
-import { getLabs, getSettings, openLab, openLabConfigs, updateSettings } from '../services/api'
+import { getLabs, getSettings, openLab, openLabConfigs, redrawLabPreview, updateSettings } from '../services/api'
 
 const defaultSettings: AppSettings = {
   labRoot: '',
   enspExecutable: '',
+  aiBaseUrl: '',
+  aiApiKey: '',
+  aiModel: '',
 }
 
 export function useWorkbench() {
@@ -14,6 +17,7 @@ export function useWorkbench() {
   const query = ref('')
   const status = ref('正在连接本地服务')
   const isLoading = ref(false)
+  const aiLoadingLabId = ref('')
   const error = ref('')
 
   const filteredLabs = computed(() => {
@@ -105,6 +109,23 @@ export function useWorkbench() {
     }
   }
 
+  async function redrawWithAi(labId: string) {
+    selectedLabId.value = labId
+    aiLoadingLabId.value = labId
+    error.value = ''
+    try {
+      const updatedLab = await redrawLabPreview(labId)
+      labs.value = labs.value.map(lab => lab.id === labId ? updatedLab : lab)
+      status.value = 'AI 已重绘拓扑'
+    }
+    catch (caught) {
+      error.value = caught instanceof Error ? caught.message : 'AI 重绘失败'
+    }
+    finally {
+      aiLoadingLabId.value = ''
+    }
+  }
+
   return {
     settings,
     labs,
@@ -112,6 +133,7 @@ export function useWorkbench() {
     query,
     status,
     isLoading,
+    aiLoadingLabId,
     error,
     filteredLabs,
     loadInitialData,
@@ -119,5 +141,6 @@ export function useWorkbench() {
     saveSettings,
     launchLab,
     openConfigs,
+    redrawWithAi,
   }
 }

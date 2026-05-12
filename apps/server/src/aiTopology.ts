@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises'
+import OpenAI from 'openai'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import type { AppSettings, ChatMessage, LabChatResult, LabChatStatus, LabProject } from '@ensp-assistant/shared'
 import { executeConsoleCommands, scanSerialConsoles, type SerialConsoleSnapshot, type SerialScanResult } from './serialScanner.js'
 
@@ -19,11 +21,7 @@ interface AiCommandPlan {
 }
 
 interface ChatCompletionPayload {
-  temperature: number
-  messages: Array<{
-    role: 'system' | 'user' | 'assistant'
-    content: string
-  }>
+  messages: ChatCompletionMessageParam[]
 }
 
 type ChatCompletionResponse = {
@@ -424,41 +422,32 @@ function aiModelCandidates(settings: AppSettings) {
   return [...new Set([settings.aiModel.trim() || 'gpt-5.5', fallbackAiModel])]
 }
 
+function createAiClient(baseUrl: string, settings: AppSettings, timeoutMs: number) {
+  return new OpenAI({
+    baseURL: baseUrl,
+    apiKey: settings.aiApiKey,
+    timeout: timeoutMs,
+  })
+}
+
 async function requestChatCompletion(baseUrl: string, settings: AppSettings, payload: ChatCompletionPayload, timeoutMs: number): Promise<ChatCompletionResult> {
   const errors: string[] = []
+  const client = createAiClient(baseUrl, settings, timeoutMs)
 
   for (const model of aiModelCandidates(settings)) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.aiApiKey}`,
-        },
-        body: JSON.stringify({
-          ...payload,
-          model,
-          reasoning_effort: 'high',
-        }),
+      const completion = await client.chat.completions.create({
+        model,
+        messages: payload.messages,
       })
 
-      if (response.ok) {
-        return {
-          payload: await response.json() as ChatCompletionResponse,
-          model,
-        }
+      return {
+        payload: completion as ChatCompletionResponse,
+        model,
       }
-
-      errors.push(`${model}: ${response.status} ${await response.text()}`)
     }
     catch (error) {
       errors.push(`${model}: ${error instanceof Error ? error.message : '请求失败'}`)
-    }
-    finally {
-      clearTimeout(timeout)
     }
   }
 
@@ -495,7 +484,6 @@ async function askAiForCommandPlan(baseUrl: string, settings: AppSettings, lab: 
 
   try {
     const { payload } = await requestChatCompletion(baseUrl, settings, {
-      temperature: 0,
       messages: [
         {
           role: 'system',
@@ -624,7 +612,6 @@ async function prepareLabChat(settings: AppSettings, lab: LabProject, rawMessage
     baseUrl,
     status: serialSnapshot.status,
     payload: {
-      temperature: 0.2,
       messages: [
         {
           role: 'system',
@@ -636,89 +623,25 @@ async function prepareLabChat(settings: AppSettings, lab: LabProject, rawMessage
   }
 }
 
-function extractStreamDelta(value: unknown) {
-  if (!value || typeof value !== 'object')
-    return ''
-  const payload = value as {
-    choices?: Array<{
-      delta?: { content?: unknown }
-      message?: { content?: unknown }
-    }>
-  }
-  const choice = payload.choices?.[0]
-  const delta = choice?.delta?.content ?? choice?.message?.content
-  return typeof delta === 'string' ? delta : ''
-}
-
 async function requestChatCompletionStream(baseUrl: string, settings: AppSettings, payload: ChatCompletionPayload, timeoutMs: number, handlers: LabChatStreamHandlers): Promise<{ message: string, model: string }> {
   const errors: string[] = []
+  const client = createAiClient(baseUrl, settings, timeoutMs)
 
   for (const model of aiModelCandidates(settings)) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     let content = ''
     try {
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.aiApiKey}`,
-        },
-        body: JSON.stringify({
-          ...payload,
-          model,
-          reasoning_effort: 'high',
-          stream: true,
-        }),
+      const stream = await client.chat.completions.create({
+        model,
+        messages: payload.messages,
+        stream: true,
       })
 
-      if (!response.ok) {
-        errors.push(`${model}: ${response.status} ${await response.text()}`)
-        continue
-      }
-
       handlers.onModel?.(model)
-      if (!response.body) {
-        const fallbackPayload = await response.json() as ChatCompletionResponse
-        return {
-          message: normalizeAssistantContent(fallbackPayload.choices?.[0]?.message?.content ?? ''),
-          model,
-        }
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done)
-          break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split(/\r?\n/)
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed.startsWith(':'))
-            continue
-
-          const raw = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed
-          if (!raw || raw === '[DONE]')
-            continue
-
-          try {
-            const delta = extractStreamDelta(JSON.parse(raw))
-            if (!delta)
-              continue
-            content += delta
-            handlers.onDelta?.(delta)
-          }
-          catch {
-            // Some compatible gateways send comments or partial keepalive lines; ignore those.
-          }
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content || ''
+        if (delta) {
+          content += delta
+          handlers.onDelta?.(delta)
         }
       }
 
@@ -731,9 +654,6 @@ async function requestChatCompletionStream(baseUrl: string, settings: AppSetting
       if (content)
         throw error
       errors.push(`${model}: ${error instanceof Error ? error.message : '流式请求失败'}`)
-    }
-    finally {
-      clearTimeout(timeout)
     }
   }
 
